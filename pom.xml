@@ -1,0 +1,368 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>it.fabricalab.streaming</groupId>
+    <artifactId>flink-dynamodb-sink</artifactId>
+    <version>1.0.0</version>
+
+    <properties>
+        <java.version>1.8</java.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <maven.compiler.source>${java.version}</maven.compiler.source>
+        <maven.compiler.target>${java.version}</maven.compiler.target>
+        <flink.version>1.8.0</flink.version>
+        <scala.binary.version>2.11</scala.binary.version>
+        <junit.version>5.5.2</junit.version>
+        <mockito.version>3.1.0</mockito.version>
+    </properties>
+
+    <!-- Project Information -->
+    <name>Flink DynamoDB Sink Source</name>
+    <description>File source operator for Apache Flink</description>
+    <url>https://github.com/fabricalab/streaming-flink-dynamodb-connector</url>
+    <licenses>
+        <license>
+            <name>Apache License, Version 2.0</name>
+            <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+            <distribution>repo</distribution>
+            <comments>A business-friendly OSS license</comments>
+        </license>
+    </licenses>
+    <organization>
+        <name>Fabricalab</name>
+        <url>https://www.fabricalab.it</url>
+    </organization>
+    <developers>
+        <developer>
+            <id>MarcoAlessandroRiggio</id>
+            <name>Marco Alessandro Riggio</name>
+            <email>marco.riggio1994@gmail.com</email>
+            <url>https://github.com/MarcoAlessandroRiggio</url>
+            <organization>Fabricalab</organization>
+            <organizationUrl>https://www.fabricalab.it</organizationUrl>
+            <roles>
+                <role>developer</role>
+            </roles>
+            <timezone>Europe/Rome</timezone>
+        </developer>
+        <developer>
+            <id>pippolino</id>
+            <name>Federico Soldani</name>
+            <email>pippo@daemon-ware.com</email>
+            <url>https://www.daemon-ware.com/</url>
+            <organization>Fabricalab</organization>
+            <organizationUrl>https://www.fabricalab.it</organizationUrl>
+            <roles>
+                <role>developer</role>
+            </roles>
+            <timezone>Europe/Rome</timezone>
+        </developer>
+    </developers>
+
+    <!-- Environment Settings -->
+    <issueManagement>
+        <system>GitHub Issues</system>
+        <url>https://github.com/fabricalab/streaming-flink-file-source/issues</url>
+    </issueManagement>
+    <scm>
+        <url>https://github.com/fabricalab/streaming-flink-file-source</url>
+        <connection>scm:git:git://github.com:fabricalab/streaming-flink-file-source.git</connection>
+        <developerConnection>scm:git:git@github.com:fabricalab/streaming-flink-file-source.git</developerConnection>
+    </scm>
+
+    <repositories>
+        <repository>
+            <id>apache.snapshots</id>
+            <name>Apache Development Snapshot Repository</name>
+            <url>https://repository.apache.org/content/repositories/snapshots/</url>
+            <releases>
+                <enabled>false</enabled>
+            </releases>
+            <snapshots>
+                <enabled>true</enabled>
+            </snapshots>
+        </repository>
+    </repositories>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>com.amazonaws</groupId>
+                <artifactId>aws-java-sdk-bom</artifactId>
+                <version>1.11.428</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <!--            <dependency> unised right now-->
+            <!--                <groupId>software.amazon.awssdk</groupId>-->
+            <!--                <artifactId>bom</artifactId>-->
+            <!--                <version>2.10.24</version>-->
+            <!--                <type>pom</type>-->
+            <!--                <scope>import</scope>-->
+            <!--            </dependency>-->
+            <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>bom</artifactId>
+                <version>2.10.24</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-java</artifactId>
+            <version>${flink.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-streaming-java_${scala.binary.version}</artifactId>
+            <version>${flink.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.amazonaws</groupId>
+            <artifactId>aws-java-sdk-dynamodb</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.amazonaws</groupId>
+            <artifactId>aws-java-sdk-sts</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-log4j12</artifactId>
+            <version>1.7.7</version>
+        </dependency>
+        <dependency>
+            <groupId>log4j</groupId>
+            <artifactId>log4j</artifactId>
+            <version>1.2.17</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.flink</groupId>
+            <artifactId>flink-test-utils_${scala.binary.version}</artifactId>
+            <version>${flink.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-params</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-junit-jupiter</artifactId>
+            <version>${mockito.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>1.12.3</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>dynalite</artifactId>
+            <version>1.12.3</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <version>1.18.10</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.google.guava</groupId>
+            <artifactId>guava</artifactId>
+            <version>27.1-jre</version>
+            <scope>compile</scope>
+        </dependency>
+    </dependencies>
+
+    <distributionManagement>
+        <snapshotRepository>
+            <id>ossrh</id>
+            <url>https://oss.sonatype.org/content/repositories/snapshots</url>
+        </snapshotRepository>
+    </distributionManagement>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>2.22.2</version>
+            </plugin>
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>0.8.5</version>
+                <executions>
+                    <execution>
+                        <id>prepare-agent</id>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.1</version>
+                <configuration>
+                    <source>${java.version}</source>
+                    <target>${java.version}</target>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.0.0</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <artifactSet>
+                                <excludes>
+                                    <exclude>org.apache.flink:force-shading</exclude>
+                                    <exclude>com.google.code.findbugs:jsr305</exclude>
+                                    <exclude>org.slf4j:*</exclude>
+                                    <exclude>log4j:*</exclude>
+                                </excludes>
+                            </artifactSet>
+                            <filters>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                        <exclude>log4j.properties</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-source-plugin</artifactId>
+                <version>3.1.0</version>
+                <executions>
+                    <execution>
+                        <id>attach-sources</id>
+                        <goals>
+                            <goal>jar-no-fork</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <version>3.1.1</version>
+                <executions>
+                    <execution>
+                        <id>attach-javadocs</id>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <!--            <plugin>-->
+            <!--                <groupId>org.apache.maven.plugins</groupId>-->
+            <!--                <artifactId>maven-gpg-plugin</artifactId>-->
+            <!--                <version>1.6</version>-->
+            <!--                <executions>-->
+            <!--                    <execution>-->
+            <!--                        <id>sign-artifacts</id>-->
+            <!--                        <phase>verify</phase>-->
+            <!--                        <goals>-->
+            <!--                            <goal>sign</goal>-->
+            <!--                        </goals>	-->
+            <!--						<configuration>-->
+            <!--                            <gpgArguments>-->
+            <!--                                <arg>&#45;&#45;pinentry-mode</arg>-->
+            <!--                                <arg>loopback</arg>-->
+            <!--                            </gpgArguments>-->
+            <!--							<keyname>${gpg.keyname}</keyname>-->
+            <!--							<passphraseServerId>${gpg.keyname}</passphraseServerId>-->
+            <!--						</configuration>-->
+            <!--                    </execution>-->
+            <!--                </executions>-->
+            <!--            </plugin>-->
+            <plugin>
+                <groupId>org.sonatype.plugins</groupId>
+                <artifactId>nexus-staging-maven-plugin</artifactId>
+                <version>1.6.8</version>
+                <extensions>true</extensions>
+                <configuration>
+                    <serverId>ossrh</serverId>
+                    <nexusUrl>https://oss.sonatype.org/</nexusUrl>
+                    <autoReleaseAfterClose>true</autoReleaseAfterClose>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+    <profiles>
+        <profile>
+            <id>add-dependencies-for-IDEA</id>
+
+            <activation>
+                <property>
+                    <name>idea.version</name>
+                </property>
+            </activation>
+
+            <dependencies>
+                <dependency>
+                    <groupId>org.apache.flink</groupId>
+                    <artifactId>flink-java</artifactId>
+                    <version>${flink.version}</version>
+                    <scope>compile</scope>
+                </dependency>
+                <dependency>
+                    <groupId>org.apache.flink</groupId>
+                    <artifactId>flink-streaming-java_${scala.binary.version}</artifactId>
+                    <version>${flink.version}</version>
+                    <scope>compile</scope>
+                </dependency>
+            </dependencies>
+        </profile>
+    </profiles>
+
+</project>
