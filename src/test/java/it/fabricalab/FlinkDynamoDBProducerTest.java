@@ -47,7 +47,7 @@ public class FlinkDynamoDBProducerTest {
     public void testProducer() throws Exception {
 
 
-        //creiao la tabella
+        //creiamo la tabella
         dynamoDB.start();
         AmazonDynamoDB dynamoDBClient = dynamoDB.getClient();
 
@@ -93,6 +93,8 @@ public class FlinkDynamoDBProducerTest {
         );
 
         env.execute("E2E Test for FlinkDynamoDBProducer");
+
+
 
 
 //

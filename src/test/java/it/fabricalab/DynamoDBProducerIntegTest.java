@@ -103,6 +103,7 @@ class DynamoDBProducerIntegTest {
                 sr.setExclusiveStartKey( scanResult.getLastEvaluatedKey() );
         }
 
+        assertEquals(items.size(), 25);
         System.err.println(items.size());
         System.err.println(items);
 
