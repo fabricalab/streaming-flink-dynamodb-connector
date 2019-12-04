@@ -18,6 +18,7 @@ import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -27,6 +28,11 @@ class DynamoDBProducerIntegTest {
 
     @ClassRule
     public static DynaliteContainer dynamoDB = new DynaliteContainer();
+
+    private static final Consumer<Throwable> dummyCallback = (t) -> {
+        System.err.println("CALLBACK: " + t);
+        t.printStackTrace();
+    };
 
 
     @Test
@@ -38,7 +44,7 @@ class DynamoDBProducerIntegTest {
                 "KeyName", "S", null, null);
 
         DynamoDBProducer producer =
-                new DynamoDBProducer(new DynamoDBProducerConfiguration(), (r) -> client.batchWriteItem(r));
+                new DynamoDBProducer(new DynamoDBProducerConfiguration(), (r) -> client.batchWriteItem(r), dummyCallback);
 
         List<ListenableFuture> futures = new ArrayList<>();
 

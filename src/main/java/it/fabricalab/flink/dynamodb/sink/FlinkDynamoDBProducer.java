@@ -224,7 +224,10 @@ public class FlinkDynamoDBProducer extends RichSinkFunction<AugmentedWriteReques
 	 */
 	@VisibleForTesting
 	protected DynamoDBProducer getProducer(DynamoDBProducerConfiguration producerConfig, Client client) {
-		return new DynamoDBProducer(producerConfig,client);
+		return new DynamoDBProducer(producerConfig,client, throwable -> {
+			LOG.error("An exception occurred in the producer", throwable);
+			thrownException = throwable;
+		});
 	}
 
 	/**

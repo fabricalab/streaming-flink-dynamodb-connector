@@ -1,17 +1,14 @@
 package it.fabricalab.flink.dynamodb.sink;
 
-import com.amazonaws.services.dynamodbv2.model.BatchWriteItemRequest;
-import com.amazonaws.services.dynamodbv2.model.BatchWriteItemResult;
-import com.amazonaws.services.dynamodbv2.model.WriteRequest;
+import com.amazonaws.services.dynamodbv2.model.*;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
 import org.apache.flink.annotation.VisibleForTesting;
 
 import java.util.*;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.*;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 
@@ -47,15 +44,20 @@ public class DynamoDBProducer {
     private ExecutorService spillerExecutor = Executors.newSingleThreadExecutor();
 
     @VisibleForTesting
-    public DynamoDBProducer(DynamoDBProducerConfiguration producerConfig, FlinkDynamoDBProducer.Client client, Runnable spiller) {
+    public DynamoDBProducer(DynamoDBProducerConfiguration producerConfig, Runnable spiller, Consumer<Throwable> errorCallback) {
         //fire the spiller
-        spillerExecutor.execute(spiller);
+        CompletableFuture.runAsync(spiller).whenComplete(new BiConsumer<Void, Throwable>() {
+            @Override
+            public void accept(Void aVoid, Throwable throwable) {
+                errorCallback.accept(throwable);
+            }
+        });
     }
 
     private int spillerCycles = 0;
 
 
-    public DynamoDBProducer(DynamoDBProducerConfiguration producerConfig, FlinkDynamoDBProducer.Client client) {
+    public DynamoDBProducer(DynamoDBProducerConfiguration producerConfig, FlinkDynamoDBProducer.Client client, Consumer<Throwable> errorCallback) {
 
         Runnable spiller = () -> {
             System.out.println(String.format("starting spiller task thread %s", Thread.currentThread().getName()));
@@ -70,7 +72,18 @@ public class DynamoDBProducer {
                     int delayMillis = 5;
                     while (true) {
                         //TODO manca un try catch; per essere felici tutte le eccezioni thrown da aws sono unchecked
-                        BatchWriteItemResult result = client.batchWriteItem(new BatchWriteItemRequest().withRequestItems(payload));
+                        BatchWriteItemResult result = null;
+                        try {
+                           result = client.batchWriteItem(new BatchWriteItemRequest().withRequestItems(payload));
+                        } catch (ProvisionedThroughputExceededException e) { // this is recoverable
+
+                            e.printStackTrace();
+                            //so we trat it like the case with unprocessed items
+                            result = new BatchWriteItemResult().withUnprocessedItems(payload);
+                            //with an additional delay
+                            Thread.sleep(delayMillis);
+
+                        }
                         System.err.println("request sent");
 
 
@@ -103,20 +116,26 @@ public class DynamoDBProducer {
                     //TODO capire se serve ritornare il result e se serve in caso allora ritornare la lista di tutti
                     payloadWithFuture.getFuture().set(new WriteItemResult(true, null));
 
-                    //here queuLatch should never been null
+                    //here queueLatch should never been null
                     if (queue.isEmpty())
                         queueLatch.countDown();
 
-                } catch (Throwable t) {
-                    if (t instanceof InterruptedException && swallowInterruptedException)
+                } catch (InterruptedException t) {
+                    if (swallowInterruptedException)
                         continue;
                     t.printStackTrace();
                 }
             }
+
         };
 
-        //fire the spiller
-        spillerExecutor.execute(spiller);
+
+        CompletableFuture.runAsync(spiller).whenComplete(new BiConsumer<Object, Throwable>() {
+            @Override
+            public void accept(Object o, Throwable throwable) {
+                errorCallback.accept(throwable);
+            }
+        });
     }
 
 

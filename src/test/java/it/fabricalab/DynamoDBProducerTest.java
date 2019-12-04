@@ -2,6 +2,7 @@ package it.fabricalab;
 
 import com.amazonaws.services.dynamodbv2.model.BatchWriteItemRequest;
 import com.amazonaws.services.dynamodbv2.model.BatchWriteItemResult;
+import com.amazonaws.services.dynamodbv2.model.ProvisionedThroughputExceededException;
 import com.amazonaws.services.dynamodbv2.model.WriteRequest;
 import com.google.common.util.concurrent.ListenableFuture;
 import it.fabricalab.flink.dynamodb.sink.FlinkDynamoDBProducer;
@@ -18,6 +19,7 @@ import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -37,13 +39,58 @@ class DynamoDBProducerTest {
         }
     };
 
+    //throws ProvisionedThroughputExceededException exceptions exactly 4 times
+    //then goes
+    //to test resilience
+    private static final FlinkDynamoDBProducer.Client
+            clientThrowingProvisionedThroughputExceededException = new FlinkDynamoDBProducer.Client() {
+
+        int ammunition = 4;
+        @Override
+        public BatchWriteItemResult batchWriteItem(BatchWriteItemRequest batchWriteItemRequestx) {
+            try {
+                Thread.sleep(100);
+                if(ammunition > 0) {
+                    ammunition--;
+                    throw new ProvisionedThroughputExceededException("this is failure nr " + ammunition);
+
+                }
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            return new BatchWriteItemResult();
+        }
+    };
+
+    private static final Consumer<Throwable> dummyCallback = (t) -> {
+        System.err.println("CALLBACK: " + t);
+        t.printStackTrace();
+    };
+
+
+    //throws Runtime Exception
+    //to test failure
+    private static final FlinkDynamoDBProducer.Client
+            clientThrowingRuntimeException = new FlinkDynamoDBProducer.Client() {
+        @Override
+        public BatchWriteItemResult batchWriteItem(BatchWriteItemRequest batchWriteItemRequestx) {
+            try {
+                Thread.sleep(100);
+                throw new RuntimeException("this is an intended failure");
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            return new BatchWriteItemResult();
+        }
+    };
+
+
 
     @Test
     void testWithoutSpiller() {
 
         DynamoDBProducer producer =
-                new DynamoDBProducer(new DynamoDBProducerConfiguration(), dummyClient, () -> {
-                });
+                new DynamoDBProducer(new DynamoDBProducerConfiguration(), () -> { }, dummyCallback);
 
         assertEquals(0, producer.getOutstandingRecordsCount());
 
@@ -76,7 +123,7 @@ class DynamoDBProducerTest {
     void testWithSpiller() throws InterruptedException, ExecutionException, TimeoutException {
 
         DynamoDBProducer producer =
-                new DynamoDBProducer(new DynamoDBProducerConfiguration(), dummyClient);
+                new DynamoDBProducer(new DynamoDBProducerConfiguration(), dummyClient, dummyCallback);
 
         List<ListenableFuture> futures = new ArrayList<>();
 
@@ -120,8 +167,7 @@ class DynamoDBProducerTest {
     @Test
     void flush() {
         DynamoDBProducer producer =
-                new DynamoDBProducer(new DynamoDBProducerConfiguration(), dummyClient, () -> {
-                });
+                new DynamoDBProducer(new DynamoDBProducerConfiguration(),  () -> { }, dummyCallback);
 
         for (int i = 0; i < 10; i++)
             producer.addUserRecord(new AugmentedWriteRequest("YY", new WriteRequest()));
@@ -159,7 +205,7 @@ class DynamoDBProducerTest {
     @Test
     void testFlushAndWait() throws InterruptedException, ExecutionException, TimeoutException {
         DynamoDBProducer producer =
-                new DynamoDBProducer(new DynamoDBProducerConfiguration(), dummyClient);
+                new DynamoDBProducer(new DynamoDBProducerConfiguration(), dummyClient, dummyCallback);
 
         List<ListenableFuture> futures = new ArrayList<>();
 
@@ -209,7 +255,7 @@ class DynamoDBProducerTest {
     void testDestroy() {
 
         DynamoDBProducer producer =
-                new DynamoDBProducer(new DynamoDBProducerConfiguration(), dummyClient);
+                new DynamoDBProducer(new DynamoDBProducerConfiguration(), dummyClient, dummyCallback);
 
         assertFalse(producer.getSpillerExecutor().isShutdown());
 
@@ -223,8 +269,7 @@ class DynamoDBProducerTest {
     @Test
     void testFlushEmpty() {
         DynamoDBProducer producer =
-                new DynamoDBProducer(new DynamoDBProducerConfiguration(), dummyClient, () -> {
-                });
+                new DynamoDBProducer(new DynamoDBProducerConfiguration(), () -> { }, dummyCallback);
 
         assertEquals(0, producer.getCurrentlyUnderConstruction().size());
         producer.flush();
@@ -232,6 +277,12 @@ class DynamoDBProducerTest {
         assertEquals(0, producer.getCurrentlyUnderConstruction().size());
         producer.flush();
 
+        assertEquals(0, producer.getCurrentlyUnderConstruction().size());
+
+        producer.addUserRecord(new AugmentedWriteRequest("YY", new WriteRequest()));
+        assertEquals(1, producer.getCurrentlyUnderConstruction().size());
+
+        producer.flush();
         assertEquals(0, producer.getCurrentlyUnderConstruction().size());
 
     }
@@ -272,7 +323,7 @@ class DynamoDBProducerTest {
 
                         return new BatchWriteItemResult().withUnprocessedItems(tbd);
                     }
-                });
+                }, dummyCallback);
 
         ListenableFuture<WriteItemResult> f = null;
         for (int i = 0; i < 25; i++) {
@@ -291,6 +342,91 @@ class DynamoDBProducerTest {
 
     }
 
+
+
+    @Test
+    void testRecoverableThrowingClient() throws InterruptedException, ExecutionException, TimeoutException {
+
+        DynamoDBProducer producer =
+                new DynamoDBProducer(new DynamoDBProducerConfiguration(),
+                        clientThrowingProvisionedThroughputExceededException, dummyCallback);
+
+        List<ListenableFuture> futures = new ArrayList<>();
+
+
+        ListenableFuture<WriteItemResult> f;
+        for (int i = 0; i < 25; i++) {
+            f = producer.addUserRecord(new AugmentedWriteRequest("YY", new WriteRequest()));
+            futures.add(f);
+            assertEquals(0, producer.getSpillerCycles());
+        }
+
+        f = producer.addUserRecord(new AugmentedWriteRequest("YY", new WriteRequest()));
+        futures.add(f);
+
+        //now it will fire
+        //wait for that
+        futures.get(0).get(); //should resolve and fast
+
+        assertEquals(1, producer.getSpillerCycles());
+
+        //spiller consumer a map of 25
+        assertEquals(1, producer.getOutstandingRecordsCount());
+
+        //one in the currentmap
+        assertEquals(1,
+                producer.getCurrentlyUnderConstruction().values().stream()
+                        .collect(Collectors.summingInt(l -> l.size())));
+
+        //no map in the queue
+        assertEquals(0, producer.getQueue().size());
+
+
+        //all the futures are done bit the last
+        assertFalse(futures.get(futures.size() - 1).isDone());
+
+        for (int i = 0; i < futures.size() - 1; i++)
+            assertTrue(futures.get(i).isDone());
+    }
+
+    public class ExceptionHolder {
+        public Throwable exception;
+    }
+
+
+    //the callback brings Euntime exception thrown by the client to the callback
+    @Test
+    void testFatalThrowingClient() throws InterruptedException, ExecutionException, TimeoutException {
+
+        ExceptionHolder gotException = new ExceptionHolder();
+
+        try {
+            DynamoDBProducer producer =
+                    new DynamoDBProducer(new DynamoDBProducerConfiguration(), clientThrowingRuntimeException, throwable ->
+                            gotException.exception = throwable
+                    );
+
+            List<ListenableFuture> futures = new ArrayList<>();
+
+
+            ListenableFuture<WriteItemResult> f;
+            for (int i = 0; i < 25; i++) {
+                f = producer.addUserRecord(new AugmentedWriteRequest("YY", new WriteRequest()));
+                futures.add(f);
+                assertEquals(0, producer.getSpillerCycles());
+            }
+
+            f = producer.addUserRecord(new AugmentedWriteRequest("YY", new WriteRequest()));
+
+            f.get(3L, TimeUnit.SECONDS);
+        } catch(TimeoutException toe) {
+            //swallowing
+        }
+
+        assertTrue( gotException.exception instanceof RuntimeException );
+
+
+    }
 
 
 
