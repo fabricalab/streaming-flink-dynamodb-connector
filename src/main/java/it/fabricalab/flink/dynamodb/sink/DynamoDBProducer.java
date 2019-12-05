@@ -43,12 +43,18 @@ public class DynamoDBProducer {
 
     private ExecutorService spillerExecutor = Executors.newSingleThreadExecutor();
 
+
+    private volatile boolean spillerDied = false;
+    private volatile Throwable spillerThrowed = null;
+
     @VisibleForTesting
     public DynamoDBProducer(DynamoDBProducerConfiguration producerConfig, Runnable spiller, Consumer<Throwable> errorCallback) {
         //fire the spiller
         CompletableFuture.runAsync(spiller).whenComplete(new BiConsumer<Void, Throwable>() {
             @Override
             public void accept(Void aVoid, Throwable throwable) {
+                spillerDied = true;
+                spillerThrowed = throwable;
                 errorCallback.accept(throwable);
             }
         });
@@ -60,18 +66,17 @@ public class DynamoDBProducer {
     public DynamoDBProducer(DynamoDBProducerConfiguration producerConfig, FlinkDynamoDBProducer.Client client, Consumer<Throwable> errorCallback) {
 
         Runnable spiller = () -> {
-            System.out.println(String.format("starting spiller task thread %s", Thread.currentThread().getName()));
+            //System.out.println(String.format("starting spiller task thread %s", Thread.currentThread().getName()));
 
             while (true) {
                 try {
                     PayloadWithFuture payloadWithFuture = queue.take(); //blocking cause the queue is blocking
                     spillerCycles++;
-                    System.err.println("consuming payload: " + payloadWithFuture.getPayload());
+                    //System.err.println("consuming payload: " + payloadWithFuture.getPayload());
 
                     Map<String, List<WriteRequest>> payload = payloadWithFuture.getPayload();
                     int delayMillis = 5;
                     while (true) {
-                        //TODO manca un try catch; per essere felici tutte le eccezioni thrown da aws sono unchecked
                         BatchWriteItemResult result = null;
                         try {
                            result = client.batchWriteItem(new BatchWriteItemRequest().withRequestItems(payload));
@@ -84,7 +89,7 @@ public class DynamoDBProducer {
                             Thread.sleep(delayMillis);
 
                         }
-                        System.err.println("request sent");
+                        //System.err.println("request sent");
 
 
                         //a questo punto c'e' la questione noiosa che AWS potrebbe non aver 'consumato' tutti
@@ -112,7 +117,7 @@ public class DynamoDBProducer {
 
                     }
 
-                    System.err.println("request sent");
+                    //System.err.println("request sent");
                     //TODO capire se serve ritornare il result e se serve in caso allora ritornare la lista di tutti
                     payloadWithFuture.getFuture().set(new WriteItemResult(true, null));
 
@@ -133,6 +138,8 @@ public class DynamoDBProducer {
         CompletableFuture.runAsync(spiller).whenComplete(new BiConsumer<Object, Throwable>() {
             @Override
             public void accept(Object o, Throwable throwable) {
+                spillerDied = true;
+                spillerThrowed = throwable;
                 errorCallback.accept(throwable);
             }
         });
@@ -148,6 +155,10 @@ public class DynamoDBProducer {
     }
 
     public ListenableFuture<WriteItemResult> addUserRecord(AugmentedWriteRequest value) {
+
+
+        propagateSpillerExceptions();
+
 
         List<WriteRequest> l = currentlyUnderConstruction.get(value.getTableName());
         if (l == null) {
@@ -167,7 +178,19 @@ public class DynamoDBProducer {
         return futureToReturn;  //a single future for each request
     }
 
+
+    private void propagateSpillerExceptions() {
+        //control if we are still alive
+        if(spillerDied ) {
+            if(spillerThrowed != null) {
+                throw new RuntimeException("Spiller died with exception", spillerThrowed);
+            }
+            throw new RuntimeException("Spiller died without exception");
+        }
+    }
     private void promoteUnderConstructionToQueue() {
+
+        propagateSpillerExceptions();
         //close the current map
         if (queueLatch == null || queueLatch.getCount() == 0)
             queueLatch = new CountDownLatch(1);
@@ -179,7 +202,7 @@ public class DynamoDBProducer {
 
     public void flush() {
         if (currentSize == 0) {
-            System.err.println("nothing to flush");
+            //System.err.println("nothing to flush");
             return;
         }
         promoteUnderConstructionToQueue();

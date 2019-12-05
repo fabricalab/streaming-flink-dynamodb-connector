@@ -67,6 +67,20 @@ class DynamoDBProducerTest {
         t.printStackTrace();
     };
 
+    private Runnable neverendingSpiller = new Runnable() {
+        @Override
+        public void run() {
+            while (true) {
+                System.err.println("Test spiller cycle...");
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+
+        }
+    };
 
     //throws Runtime Exception
     //to test failure
@@ -90,7 +104,7 @@ class DynamoDBProducerTest {
     void testWithoutSpiller() {
 
         DynamoDBProducer producer =
-                new DynamoDBProducer(new DynamoDBProducerConfiguration(), () -> { }, dummyCallback);
+                new DynamoDBProducer(new DynamoDBProducerConfiguration(), neverendingSpiller , dummyCallback);
 
         assertEquals(0, producer.getOutstandingRecordsCount());
 
@@ -167,7 +181,7 @@ class DynamoDBProducerTest {
     @Test
     void flush() {
         DynamoDBProducer producer =
-                new DynamoDBProducer(new DynamoDBProducerConfiguration(),  () -> { }, dummyCallback);
+                new DynamoDBProducer(new DynamoDBProducerConfiguration(), neverendingSpiller, dummyCallback);
 
         for (int i = 0; i < 10; i++)
             producer.addUserRecord(new AugmentedWriteRequest("YY", new WriteRequest()));
@@ -269,7 +283,7 @@ class DynamoDBProducerTest {
     @Test
     void testFlushEmpty() {
         DynamoDBProducer producer =
-                new DynamoDBProducer(new DynamoDBProducerConfiguration(), () -> { }, dummyCallback);
+                new DynamoDBProducer(new DynamoDBProducerConfiguration(),neverendingSpiller, dummyCallback);
 
         assertEquals(0, producer.getCurrentlyUnderConstruction().size());
         producer.flush();
