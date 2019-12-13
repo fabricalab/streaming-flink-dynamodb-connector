@@ -79,7 +79,6 @@ public class FlinkDynamoDBProducer extends RichSinkFunction<AugmentedWriteReques
 	 */
 	public FlinkDynamoDBProducer(Properties configProps) {
 		checkNotNull(configProps, "configProps can not be null");
-		//this.configProps = KinesisConfigUtil.replaceDeprecatedProducerKeys(configProps);
 		this.configProps = configProps;
 	}
 
@@ -116,10 +115,11 @@ public class FlinkDynamoDBProducer extends RichSinkFunction<AugmentedWriteReques
 		super.open(parameters);
 
 		// check and pass the configuration properties
-		DynamoDBProducerConfiguration producerConfig = DynamoDBProducerUtils.getValidatedProducerConfiguration(configProps);
+		//for future use
+		//DynamoDBProducerConfiguration producerConfig = DynamoDBProducerUtils.getValidatedProducerConfiguration(configProps);
 
-		Client client = getClient(producerConfig);
-		producer = getProducer(producerConfig, client);
+		Client client = getClient(configProps);
+		producer = getProducer(configProps, client);
 
 		final MetricGroup metricGroup = getRuntimeContext().getMetricGroup().addGroup(DYNAMODB_PRODUCER_METRIC_GROUP);
 		this.backpressureCycles = metricGroup.counter(METRIC_BACKPRESSURE_CYCLES);
@@ -154,7 +154,7 @@ public class FlinkDynamoDBProducer extends RichSinkFunction<AugmentedWriteReques
 		};
 
 
-		LOG.info("Started DYNAMODB producer instance for region '{}'", producerConfig.getRegion());
+		LOG.info("Started DYNAMODB producer instance for region '{}'", configProps.get("aws.region"));
 	}
 
 
@@ -223,8 +223,8 @@ public class FlinkDynamoDBProducer extends RichSinkFunction<AugmentedWriteReques
 	 * Exposed so that tests can inject mock producers easily.
 	 */
 	@VisibleForTesting
-	protected DynamoDBProducer getProducer(DynamoDBProducerConfiguration producerConfig, Client client) {
-		return new DynamoDBProducer(producerConfig,client, throwable -> {
+	protected DynamoDBProducer getProducer(Properties producerProps, Client client) {
+		return new DynamoDBProducer(producerProps,client, throwable -> {
 			LOG.error("An exception occurred in the producer", throwable);
 			thrownException = throwable;
 		});
@@ -233,9 +233,10 @@ public class FlinkDynamoDBProducer extends RichSinkFunction<AugmentedWriteReques
 	/**
 	 * Creates a {@link Client}.
 	 * Exposed so that tests can inject mock producers easily.
+	 * @param producerProps
 	 */
 	@VisibleForTesting
-	protected Client getClient(DynamoDBProducerConfiguration producerConfig) {
+	protected Client getClient(Properties producerProps) {
 		AmazonDynamoDB actualClient = AWSUtil.createDynamoDBClient(configProps);
 		return  (r) -> actualClient.batchWriteItem(r);
 	}

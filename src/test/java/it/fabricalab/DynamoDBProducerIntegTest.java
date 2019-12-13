@@ -1,22 +1,17 @@
 package it.fabricalab;
 
-import akka.io.Tcp;
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDB;
 import com.amazonaws.services.dynamodbv2.model.*;
 import com.google.common.util.concurrent.ListenableFuture;
-import it.fabricalab.flink.dynamodb.sink.FlinkDynamoDBProducer;
 import it.fabricalab.flink.dynamodb.sink.AugmentedWriteRequest;
 import it.fabricalab.flink.dynamodb.sink.DynamoDBProducer;
-import it.fabricalab.flink.dynamodb.sink.DynamoDBProducerConfiguration;
 import it.fabricalab.flink.dynamodb.sink.WriteItemResult;
 import org.junit.ClassRule;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.dynamodb.DynaliteContainer;
 
-import java.lang.reflect.Array;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -44,7 +39,7 @@ class DynamoDBProducerIntegTest {
                 "KeyName", "S", null, null);
 
         DynamoDBProducer producer =
-                new DynamoDBProducer(new DynamoDBProducerConfiguration(), (r) -> client.batchWriteItem(r), dummyCallback);
+                new DynamoDBProducer(new Properties(), (r) -> client.batchWriteItem(r), dummyCallback);
 
         List<ListenableFuture> futures = new ArrayList<>();
 

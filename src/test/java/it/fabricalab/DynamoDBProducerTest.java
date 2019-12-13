@@ -8,14 +8,10 @@ import com.google.common.util.concurrent.ListenableFuture;
 import it.fabricalab.flink.dynamodb.sink.FlinkDynamoDBProducer;
 import it.fabricalab.flink.dynamodb.sink.AugmentedWriteRequest;
 import it.fabricalab.flink.dynamodb.sink.DynamoDBProducer;
-import it.fabricalab.flink.dynamodb.sink.DynamoDBProducerConfiguration;
 import it.fabricalab.flink.dynamodb.sink.WriteItemResult;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -104,7 +100,7 @@ class DynamoDBProducerTest {
     void testWithoutSpiller() {
 
         DynamoDBProducer producer =
-                new DynamoDBProducer(new DynamoDBProducerConfiguration(), neverendingSpiller , dummyCallback);
+                new DynamoDBProducer(new Properties(), neverendingSpiller , dummyCallback);
 
         assertEquals(0, producer.getOutstandingRecordsCount());
 
@@ -137,7 +133,7 @@ class DynamoDBProducerTest {
     void testWithSpiller() throws InterruptedException, ExecutionException, TimeoutException {
 
         DynamoDBProducer producer =
-                new DynamoDBProducer(new DynamoDBProducerConfiguration(), dummyClient, dummyCallback);
+                new DynamoDBProducer(new Properties(), dummyClient, dummyCallback);
 
         List<ListenableFuture> futures = new ArrayList<>();
 
@@ -181,7 +177,7 @@ class DynamoDBProducerTest {
     @Test
     void flush() {
         DynamoDBProducer producer =
-                new DynamoDBProducer(new DynamoDBProducerConfiguration(), neverendingSpiller, dummyCallback);
+                new DynamoDBProducer(new Properties(), neverendingSpiller, dummyCallback);
 
         for (int i = 0; i < 10; i++)
             producer.addUserRecord(new AugmentedWriteRequest("YY", new WriteRequest()));
@@ -219,7 +215,7 @@ class DynamoDBProducerTest {
     @Test
     void testFlushAndWait() throws InterruptedException, ExecutionException, TimeoutException {
         DynamoDBProducer producer =
-                new DynamoDBProducer(new DynamoDBProducerConfiguration(), dummyClient, dummyCallback);
+                new DynamoDBProducer(new Properties(), dummyClient, dummyCallback);
 
         List<ListenableFuture> futures = new ArrayList<>();
 
@@ -269,7 +265,7 @@ class DynamoDBProducerTest {
     void testDestroy() {
 
         DynamoDBProducer producer =
-                new DynamoDBProducer(new DynamoDBProducerConfiguration(), dummyClient, dummyCallback);
+                new DynamoDBProducer(new Properties(), dummyClient, dummyCallback);
 
         assertFalse(producer.getSpillerExecutor().isShutdown());
 
@@ -283,7 +279,7 @@ class DynamoDBProducerTest {
     @Test
     void testFlushEmpty() {
         DynamoDBProducer producer =
-                new DynamoDBProducer(new DynamoDBProducerConfiguration(),neverendingSpiller, dummyCallback);
+                new DynamoDBProducer(new Properties(),neverendingSpiller, dummyCallback);
 
         assertEquals(0, producer.getCurrentlyUnderConstruction().size());
         producer.flush();
@@ -307,7 +303,7 @@ class DynamoDBProducerTest {
         ArrayList<WriteRequest> consumed = new ArrayList<>();
 
         DynamoDBProducer producer =
-                new DynamoDBProducer(new DynamoDBProducerConfiguration(), new FlinkDynamoDBProducer.Client() {
+                new DynamoDBProducer(new Properties(), new FlinkDynamoDBProducer.Client() {
                     //this client consumes only a few elements in each request
                     //counts how many requests are done
                     @Override
@@ -362,7 +358,7 @@ class DynamoDBProducerTest {
     void testRecoverableThrowingClient() throws InterruptedException, ExecutionException, TimeoutException {
 
         DynamoDBProducer producer =
-                new DynamoDBProducer(new DynamoDBProducerConfiguration(),
+                new DynamoDBProducer(new Properties(),
                         clientThrowingProvisionedThroughputExceededException, dummyCallback);
 
         List<ListenableFuture> futures = new ArrayList<>();
@@ -416,7 +412,7 @@ class DynamoDBProducerTest {
 
         try {
             DynamoDBProducer producer =
-                    new DynamoDBProducer(new DynamoDBProducerConfiguration(), clientThrowingRuntimeException, throwable ->
+                    new DynamoDBProducer(new Properties(), clientThrowingRuntimeException, throwable ->
                             gotException.exception = throwable
                     );
 

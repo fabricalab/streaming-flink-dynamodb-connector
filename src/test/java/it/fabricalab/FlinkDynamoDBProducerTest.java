@@ -6,13 +6,8 @@ import com.amazonaws.client.builder.AwsClientBuilder;
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDB;
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClientBuilder;
 import com.amazonaws.services.dynamodbv2.model.*;
-import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.Maps;
 import it.fabricalab.flink.dynamodb.sink.AugmentedWriteRequest;
-import it.fabricalab.flink.dynamodb.sink.DynamoDBProducer;
-import it.fabricalab.flink.dynamodb.sink.DynamoDBProducerConfiguration;
 import it.fabricalab.flink.dynamodb.sink.FlinkDynamoDBProducer;
-import org.apache.flink.api.common.functions.RuntimeContext;
 import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.streaming.api.datastream.DataStreamSource;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -20,9 +15,7 @@ import org.junit.ClassRule;
 import org.junit.Test;
 import org.testcontainers.dynamodb.DynaliteContainer;
 
-import java.io.IOException;
 import java.util.*;
-import java.util.concurrent.ExecutionException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -78,7 +71,7 @@ public class FlinkDynamoDBProducerTest {
         streamIn.addSink(
                 new FlinkDynamoDBProducer(new Properties()) {
                     @Override
-                    protected Client getClient(DynamoDBProducerConfiguration producerConfig) {
+                    protected Client getClient(Properties producerProps) {
                         /***
                          * Create client
                          */
@@ -138,7 +131,7 @@ public class FlinkDynamoDBProducerTest {
 
         FlinkDynamoDBProducer mySink = new FlinkDynamoDBProducer(new Properties()) {
             @Override
-            protected Client getClient(DynamoDBProducerConfiguration producerConfig) {
+            protected Client getClient(Properties producerProps) {
                 /***
                  * Create client Throwing exception
                  */

@@ -48,7 +48,7 @@ public class DynamoDBProducer {
     private volatile Throwable spillerThrowed = null;
 
     @VisibleForTesting
-    public DynamoDBProducer(DynamoDBProducerConfiguration producerConfig, Runnable spiller, Consumer<Throwable> errorCallback) {
+    public DynamoDBProducer(Properties producerProps,Runnable spiller, Consumer<Throwable> errorCallback) {
         //fire the spiller
         CompletableFuture.runAsync(spiller).whenComplete(new BiConsumer<Void, Throwable>() {
             @Override
@@ -63,7 +63,7 @@ public class DynamoDBProducer {
     private int spillerCycles = 0;
 
 
-    public DynamoDBProducer(DynamoDBProducerConfiguration producerConfig, FlinkDynamoDBProducer.Client client, Consumer<Throwable> errorCallback) {
+    public DynamoDBProducer(Properties producerProps, FlinkDynamoDBProducer.Client client, Consumer<Throwable> errorCallback) {
 
         Runnable spiller = () -> {
             //System.out.println(String.format("starting spiller task thread %s", Thread.currentThread().getName()));
