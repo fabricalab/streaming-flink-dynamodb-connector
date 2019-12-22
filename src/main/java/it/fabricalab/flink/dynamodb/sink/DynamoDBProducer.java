@@ -16,6 +16,8 @@ public class DynamoDBProducer {
 
 
     private static final int MAX_ELEMENTS_PER_REQUEST = 25; //Dynamodb MAX !!
+    private static final int INITIAL_SPILLER_DELAY = 5; //
+
     private Map<String, List<WriteRequest>> currentlyUnderConstruction = new HashMap<>();
     private SettableFuture<WriteItemResult> currentFuture = SettableFuture.create();
     private int currentSize = 0;
@@ -45,7 +47,7 @@ public class DynamoDBProducer {
 
 
     private volatile boolean spillerDied = false;
-    private volatile Throwable spillerThrowed = null;
+    private volatile Throwable spillerTrowed = null;
 
     @VisibleForTesting
     public DynamoDBProducer(Properties producerProps,Runnable spiller, Consumer<Throwable> errorCallback) {
@@ -54,7 +56,7 @@ public class DynamoDBProducer {
             @Override
             public void accept(Void aVoid, Throwable throwable) {
                 spillerDied = true;
-                spillerThrowed = throwable;
+                spillerTrowed = throwable;
                 errorCallback.accept(throwable);
             }
         });
@@ -66,8 +68,8 @@ public class DynamoDBProducer {
     public DynamoDBProducer(Properties producerProps, FlinkDynamoDBProducer.Client client, Consumer<Throwable> errorCallback) {
 
         Runnable spiller = () -> {
-            //System.out.println(String.format("starting spiller task thread %s", Thread.currentThread().getName()));
 
+            //the spiller is a infinite loop consuming the queue
             while (true) {
                 try {
                     PayloadWithFuture payloadWithFuture = queue.take(); //blocking cause the queue is blocking
@@ -75,7 +77,7 @@ public class DynamoDBProducer {
                     //System.err.println("consuming payload: " + payloadWithFuture.getPayload());
 
                     Map<String, List<WriteRequest>> payload = payloadWithFuture.getPayload();
-                    int delayMillis = 5;
+                    int delayMillis = INITIAL_SPILLER_DELAY;
                     while (true) {
                         BatchWriteItemResult result = null;
                         try {
@@ -83,7 +85,7 @@ public class DynamoDBProducer {
                         } catch (ProvisionedThroughputExceededException e) { // this is recoverable
 
                             e.printStackTrace();
-                            //so we trat it like the case with unprocessed items
+                            //so we treat it like the case with unprocessed items
                             result = new BatchWriteItemResult().withUnprocessedItems(payload);
                             //with an additional delay
                             Thread.sleep(delayMillis);
@@ -139,7 +141,7 @@ public class DynamoDBProducer {
             @Override
             public void accept(Object o, Throwable throwable) {
                 spillerDied = true;
-                spillerThrowed = throwable;
+                spillerTrowed = throwable;
                 errorCallback.accept(throwable);
             }
         });
@@ -156,9 +158,7 @@ public class DynamoDBProducer {
 
     public ListenableFuture<WriteItemResult> addUserRecord(AugmentedWriteRequest value) {
 
-
         propagateSpillerExceptions();
-
 
         List<WriteRequest> l = currentlyUnderConstruction.get(value.getTableName());
         if (l == null) {
@@ -182,14 +182,14 @@ public class DynamoDBProducer {
     private void propagateSpillerExceptions() {
         //control if we are still alive
         if(spillerDied ) {
-            if(spillerThrowed != null) {
-                throw new RuntimeException("Spiller died with exception", spillerThrowed);
+            if(spillerTrowed != null) {
+                throw new RuntimeException("Spiller died with exception", spillerTrowed);
             }
             throw new RuntimeException("Spiller died without exception");
         }
     }
-    private void promoteUnderConstructionToQueue() {
 
+    private void promoteUnderConstructionToQueue() {
         propagateSpillerExceptions();
         //close the current map
         if (queueLatch == null || queueLatch.getCount() == 0)
