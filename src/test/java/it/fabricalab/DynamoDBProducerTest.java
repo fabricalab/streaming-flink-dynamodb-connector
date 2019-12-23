@@ -11,6 +11,8 @@ import it.fabricalab.flink.dynamodb.sink.DynamoDBProducer;
 import it.fabricalab.flink.dynamodb.sink.WriteItemResult;
 import org.junit.jupiter.api.Test;
 
+import javax.xml.crypto.*;
+import javax.xml.crypto.dsig.keyinfo.KeyInfo;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;

@@ -110,6 +110,81 @@ public class FlinkDynamoDBProducerTest {
         System.err.println(items);
     }
 
+
+    @Test
+    public void testProducerAndConflict() throws Exception {
+
+
+        //creiamo la tabella
+        dynamoDB.start();
+        AmazonDynamoDB dynamoDBClient = dynamoDB.getClient();
+
+        //to stay serializable we must create the client inside the
+        //operator
+
+        String containerIpAddress = dynamoDB.getContainerIpAddress();
+        int mappedPort = dynamoDB.getMappedPort(4567);
+
+
+        TestUtils.createTable(dynamoDBClient, "TempTableNameConflict", 5, 5,
+                "KeyName", "S", null, null);
+
+
+        //creiamo una rete con solo il nostor sink
+        final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(1);
+
+        List<AugmentedWriteRequest> list = new ArrayList<>();
+        for (int i = 0; i < 30; i++) {
+            list.add(
+                    createAugmentedWriteRequest("TempTableNameConflict", String.format("key-%04d", i), "XYZ"));
+        }
+
+        DataStreamSource<AugmentedWriteRequest> streamIn = env.fromCollection(list);
+
+        streamIn.addSink(
+                new FlinkDynamoDBProducer(new Properties(), (v) -> "CONFLICTING_KEY") {
+                    @Override
+                    protected Client getClient(Properties producerProps) {
+                        /***
+                         * Create client
+                         */
+                        AmazonDynamoDB innerDynamoDBClient = AmazonDynamoDBClientBuilder.standard()
+                                .withEndpointConfiguration(
+                                        new AwsClientBuilder.EndpointConfiguration(
+                                                "http://" + containerIpAddress + ":" + mappedPort, null))
+                                .withCredentials(new AWSStaticCredentialsProvider(new BasicAWSCredentials("dummy", "dummy")))
+                                .build();
+                        return innerDynamoDBClient::batchWriteItem;
+                    }
+                }
+        );
+
+        env.execute("E2E Test for FlinkDynamoDBProducer");
+
+        //count inserted items
+        //adesso guardiamo cosa c'e' nella tabella
+        List<Map<String, AttributeValue>> items = new ArrayList<>();
+
+        ScanRequest sr = new ScanRequest()
+                .withTableName("TempTableNameConflict")
+                .withAttributesToGet(Arrays.asList("KeyName", "anotherAttribute"));
+
+        while (true) {
+            ScanResult scanResult = dynamoDBClient.scan( sr );
+
+            items.addAll(scanResult.getItems());
+            if(scanResult.getLastEvaluatedKey()  == null || scanResult.getLastEvaluatedKey().isEmpty() )
+                break;
+            else
+                sr.setExclusiveStartKey( scanResult.getLastEvaluatedKey() );
+        }
+        assertEquals(30, items.size());
+        System.err.println(items.size());
+        System.err.println(items);
+    }
+
+
     @Test
     public void testFail() throws Exception {
 

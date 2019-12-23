@@ -6,7 +6,9 @@ import com.google.common.util.concurrent.ListenableFuture;
 import it.fabricalab.flink.dynamodb.sink.AugmentedWriteRequest;
 import it.fabricalab.flink.dynamodb.sink.DynamoDBProducer;
 import it.fabricalab.flink.dynamodb.sink.WriteItemResult;
+import org.apache.flink.api.java.functions.KeySelector;
 import org.junit.ClassRule;
+import org.junit.Rule;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.dynamodb.DynaliteContainer;
 
@@ -21,8 +23,10 @@ import static org.junit.jupiter.api.Assertions.*;
 class DynamoDBProducerIntegTest {
 
 
-    @ClassRule
-    public static DynaliteContainer dynamoDB = new DynaliteContainer();
+    @Rule
+    public  DynaliteContainer dynamoDB = new DynaliteContainer();
+
+
 
     private static final Consumer<Throwable> dummyCallback = (t) -> {
         System.err.println("CALLBACK: " + t);
@@ -95,13 +99,13 @@ class DynamoDBProducerIntegTest {
 
 
         while (true) {
-            ScanResult scanResult = client.scan( sr );
+            ScanResult scanResult = client.scan(sr);
 
             items.addAll(scanResult.getItems());
-            if(scanResult.getLastEvaluatedKey()  == null || scanResult.getLastEvaluatedKey().isEmpty() )
+            if (scanResult.getLastEvaluatedKey() == null || scanResult.getLastEvaluatedKey().isEmpty())
                 break;
             else
-                sr.setExclusiveStartKey( scanResult.getLastEvaluatedKey() );
+                sr.setExclusiveStartKey(scanResult.getLastEvaluatedKey());
         }
 
         assertEquals(items.size(), 25);
@@ -110,5 +114,66 @@ class DynamoDBProducerIntegTest {
 
     }
 
+    @Test
+    void testWitSpillerAndConflict() throws InterruptedException, ExecutionException, TimeoutException {
+        dynamoDB.start();
+
+        AmazonDynamoDB client = dynamoDB.getClient();
+        TestUtils.createTable(client, "TempTableName", 5, 5,
+                "KeyName", "S", null, null);
+
+        DynamoDBProducer producer =
+                new DynamoDBProducer(new Properties(),
+                        (r) -> {
+                            System.err.println(r);return client.batchWriteItem(r);},
+                        //this key selector causes each chun to contain only one element
+                        (v) -> "SAME_CONSTANT_KEY",
+                        dummyCallback);
+
+        List<ListenableFuture> futures = new ArrayList<>();
+
+
+        ListenableFuture<WriteItemResult> f;
+        for (int i = 0; i < 35; i++) {
+
+            HashMap<String, AttributeValue> item = new HashMap<>();
+            item.put("KeyName", new AttributeValue("key_" + i));
+            item.put("anotherAttribute", new AttributeValue(UUID.randomUUID().toString()));
+
+            WriteRequest wr = new WriteRequest().withPutRequest(new PutRequest().withItem(item));
+
+            f = producer.addUserRecord(new AugmentedWriteRequest("TempTableName", wr));
+            futures.add(f);
+        }
+
+        //f = producer.addUserRecord(new AugmentedWriteRequest("TempTableName", new WriteRequest()));
+        //futures.add(f);
+
+        //now it will flush
+        producer.flushAndWait();
+
+        //adesso guardiamo cosa c'e' nella tabella
+        List<Map<String, AttributeValue>> items = new ArrayList<>();
+
+        ScanRequest sr = new ScanRequest()
+                .withTableName("TempTableName")
+                .withAttributesToGet(Arrays.asList("KeyName", "anotherAttribute"));
+
+
+        while (true) {
+            ScanResult scanResult = client.scan(sr);
+
+            items.addAll(scanResult.getItems());
+            if (scanResult.getLastEvaluatedKey() == null || scanResult.getLastEvaluatedKey().isEmpty())
+                break;
+            else
+                sr.setExclusiveStartKey(scanResult.getLastEvaluatedKey());
+        }
+
+        assertEquals(items.size(), 35);
+        System.err.println(items.size());
+        System.err.println(items);
+
+    }
 
 }

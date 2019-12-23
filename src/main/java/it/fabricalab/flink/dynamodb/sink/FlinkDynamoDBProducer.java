@@ -11,6 +11,7 @@ import it.fabricalab.flink.dynamodb.sink.utils.AWSUtil;
 import it.fabricalab.flink.dynamodb.sink.utils.TimeoutLatch;
 import org.apache.flink.annotation.PublicEvolving;
 import org.apache.flink.annotation.VisibleForTesting;
+import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.MetricGroup;
@@ -70,7 +71,10 @@ public class FlinkDynamoDBProducer extends RichSinkFunction<AugmentedWriteReques
 	/* Field for async exception */
 	private transient volatile Throwable thrownException;
 
+
+	private KeySelector<AugmentedWriteRequest, String> keySelector = null;
 	// --------------------------- Initialization and configuration  ---------------------------
+
 
 	/**
 	 * Create a new FlinkDynamodbProducer.
@@ -78,8 +82,18 @@ public class FlinkDynamoDBProducer extends RichSinkFunction<AugmentedWriteReques
 	 * @param configProps The properties used to configure DynamodbProducer, including AWS credentials and AWS region
 	 */
 	public FlinkDynamoDBProducer(Properties configProps) {
+		this(configProps, null);
+	}
+	/**
+	 * Create a new FlinkDynamodbProducer.
+	 *
+	 * @param configProps The properties used to configure DynamodbProducer, including AWS credentials and AWS region
+	 * @param keySelector Key Selector to avoid primary-key conflicts in batchWriteItem
+	 */
+	public FlinkDynamoDBProducer(Properties configProps, KeySelector<AugmentedWriteRequest, String> keySelector) {
 		checkNotNull(configProps, "configProps can not be null");
 		this.configProps = configProps;
+		this.keySelector = keySelector;
 	}
 
 	/**
@@ -119,7 +133,7 @@ public class FlinkDynamoDBProducer extends RichSinkFunction<AugmentedWriteReques
 		//DynamoDBProducerConfiguration producerConfig = DynamoDBProducerUtils.getValidatedProducerConfiguration(configProps);
 
 		Client client = getClient(configProps);
-		producer = getProducer(configProps, client);
+		producer = getProducer(configProps, client, keySelector);
 
 		final MetricGroup metricGroup = getRuntimeContext().getMetricGroup().addGroup(DYNAMODB_PRODUCER_METRIC_GROUP);
 		this.backpressureCycles = metricGroup.counter(METRIC_BACKPRESSURE_CYCLES);
@@ -223,8 +237,8 @@ public class FlinkDynamoDBProducer extends RichSinkFunction<AugmentedWriteReques
 	 * Exposed so that tests can inject mock producers easily.
 	 */
 	@VisibleForTesting
-	protected DynamoDBProducer getProducer(Properties producerProps, Client client) {
-		return new DynamoDBProducer(producerProps,client, throwable -> {
+	protected DynamoDBProducer getProducer(Properties producerProps, Client client, KeySelector<AugmentedWriteRequest, String> keySelector) {
+		return new DynamoDBProducer(producerProps,client, keySelector, throwable -> {
 			LOG.error("An exception occurred in the producer", throwable);
 			thrownException = throwable;
 		});

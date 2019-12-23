@@ -4,6 +4,7 @@ import com.amazonaws.services.dynamodbv2.model.*;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
 import org.apache.flink.annotation.VisibleForTesting;
+import org.apache.flink.api.java.functions.KeySelector;
 
 import java.util.*;
 import java.util.concurrent.*;
@@ -50,7 +51,7 @@ public class DynamoDBProducer {
     private volatile Throwable spillerTrowed = null;
 
     @VisibleForTesting
-    public DynamoDBProducer(Properties producerProps,Runnable spiller, Consumer<Throwable> errorCallback) {
+    public DynamoDBProducer(Properties producerProps, Runnable spiller, Consumer<Throwable> errorCallback) {
         //fire the spiller
         CompletableFuture.runAsync(spiller).whenComplete(new BiConsumer<Void, Throwable>() {
             @Override
@@ -65,7 +66,20 @@ public class DynamoDBProducer {
     private int spillerCycles = 0;
 
 
-    public DynamoDBProducer(Properties producerProps, FlinkDynamoDBProducer.Client client, Consumer<Throwable> errorCallback) {
+    private KeySelector<AugmentedWriteRequest, String> keySelector;
+    private Set<String> seenKeys = new HashSet<>();
+
+    public DynamoDBProducer(Properties producerProps,
+                            FlinkDynamoDBProducer.Client client,
+                            Consumer<Throwable> errorCallback) {
+        this(producerProps, client, null, errorCallback);
+    }
+
+    public DynamoDBProducer(Properties producerProps,
+                            FlinkDynamoDBProducer.Client client,
+                            KeySelector<AugmentedWriteRequest, String> keySelector, Consumer<Throwable> errorCallback) {
+
+        this.keySelector = keySelector;
 
         Runnable spiller = () -> {
 
@@ -81,7 +95,7 @@ public class DynamoDBProducer {
                     while (true) {
                         BatchWriteItemResult result = null;
                         try {
-                           result = client.batchWriteItem(new BatchWriteItemRequest().withRequestItems(payload));
+                            result = client.batchWriteItem(new BatchWriteItemRequest().withRequestItems(payload));
                         } catch (ProvisionedThroughputExceededException e) { // this is recoverable
 
                             e.printStackTrace();
@@ -160,6 +174,21 @@ public class DynamoDBProducer {
 
         propagateSpillerExceptions();
 
+        if (keySelector != null) {
+            try {
+                String key = keySelector.getKey(value);
+                if (seenKeys.contains(key)) {
+                    //force flush
+                    System.err.println("Force flush due to chunking, splitting at " + getCurrentlyUnderConstruction().size() + " out of " + MAX_ELEMENTS_PER_REQUEST);
+                    promoteUnderConstructionToQueue(); //silently changes state
+                    seenKeys.clear();
+                }
+                seenKeys.add(key);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }
+
         List<WriteRequest> l = currentlyUnderConstruction.get(value.getTableName());
         if (l == null) {
             l = new ArrayList<>();
@@ -172,7 +201,7 @@ public class DynamoDBProducer {
         ListenableFuture<WriteItemResult> futureToReturn = currentFuture;
 
         if (currentSize >= MAX_ELEMENTS_PER_REQUEST) {
-            promoteUnderConstructionToQueue(); //silentrly changes state
+            promoteUnderConstructionToQueue(); //silently changes state
         }
 
         return futureToReturn;  //a single future for each request
@@ -181,8 +210,8 @@ public class DynamoDBProducer {
 
     private void propagateSpillerExceptions() {
         //control if we are still alive
-        if(spillerDied ) {
-            if(spillerTrowed != null) {
+        if (spillerDied) {
+            if (spillerTrowed != null) {
                 throw new RuntimeException("Spiller died with exception", spillerTrowed);
             }
             throw new RuntimeException("Spiller died without exception");
