@@ -112,6 +112,83 @@ public class FlinkDynamoDBProducerTest {
 
 
     @Test
+    public void testProducerTimelyFlush() throws Exception {
+
+
+        //creiamo la tabella
+        dynamoDB.start();
+        AmazonDynamoDB dynamoDBClient = dynamoDB.getClient();
+
+        //to stay serializable we must create the client inside the
+        //operator
+
+        String containerIpAddress = dynamoDB.getContainerIpAddress();
+        int mappedPort = dynamoDB.getMappedPort(4567);
+
+
+        TestUtils.createTable(dynamoDBClient, "TempTableName", 5, 5,
+                "KeyName", "S", null, null);
+
+
+        //creiamo una rete con solo il nostro sink
+        final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
+        env.setParallelism(1);
+
+        List<AugmentedWriteRequest> list = new ArrayList<>();
+        for (int i = 0; i < 3000; i++) {
+            list.add(
+                    createAugmentedWriteRequest("TempTableName", String.format("key-%04d", i), "XYZ"));
+        }
+
+        DataStreamSource<AugmentedWriteRequest> streamIn = env.fromCollection(list);
+
+        //never use 10 milliseconds in a real job, just to stress the timer machinery.
+        Properties properties = new Properties();
+        properties.setProperty(FlinkDynamoDBProducer.DYNAMODB_PRODUCER_TIMEOUT_PROPERTY,"10");
+
+        streamIn.addSink(
+                new FlinkDynamoDBProducer(properties) {
+                    @Override
+                    protected Client getClient(Properties producerProps) {
+                        /***
+                         * Create client
+                         */
+                        AmazonDynamoDB innerDynamoDBClient = AmazonDynamoDBClientBuilder.standard()
+                                .withEndpointConfiguration(
+                                        new AwsClientBuilder.EndpointConfiguration(
+                                                "http://" + containerIpAddress + ":" + mappedPort, null))
+                                .withCredentials(new AWSStaticCredentialsProvider(new BasicAWSCredentials("dummy", "dummy")))
+                                .build();
+                        return innerDynamoDBClient::batchWriteItem;
+                    }
+                }
+        );
+        env.execute("E2E Test for FlinkDynamoDBProducer");
+
+        //count inserted items
+        //adesso guardiamo cosa c'e' nella tabella
+        List<Map<String, AttributeValue>> items = new ArrayList<>();
+
+        ScanRequest sr = new ScanRequest()
+                .withTableName("TempTableName")
+                .withAttributesToGet(Arrays.asList("KeyName", "anotherAttribute"));
+
+        while (true) {
+            ScanResult scanResult = dynamoDBClient.scan( sr );
+
+            items.addAll(scanResult.getItems());
+            if(scanResult.getLastEvaluatedKey()  == null || scanResult.getLastEvaluatedKey().isEmpty() )
+                break;
+            else
+                sr.setExclusiveStartKey( scanResult.getLastEvaluatedKey() );
+        }
+        assertEquals(3000, items.size());
+        System.err.println(items.size());
+        System.err.println(items);
+    }
+
+
+    @Test
     public void testProducerAndConflict() throws Exception {
 
 
