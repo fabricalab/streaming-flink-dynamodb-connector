@@ -3,6 +3,8 @@ package it.fabricalab.flink.dynamodb.sink;
 import com.amazonaws.services.dynamodbv2.model.*;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
+import lombok.extern.log4j.Log4j2;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.java.functions.KeySelector;
 
@@ -12,7 +14,7 @@ import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
-
+@Slf4j
 public class DynamoDBProducer {
 
 
@@ -95,9 +97,11 @@ public class DynamoDBProducer {
                     while (true) {
                         BatchWriteItemResult result = null;
                         try {
+                            log.debug("writing payload of keys-size {}: {}", payload.keySet().size(), payload);
                             result = client.batchWriteItem(new BatchWriteItemRequest().withRequestItems(payload));
                         } catch (ProvisionedThroughputExceededException e) { // this is recoverable
 
+                            log.error("error writing to Dynamo: {}",e);
                             e.printStackTrace();
                             //so we treat it like the case with unprocessed items
                             result = new BatchWriteItemResult().withUnprocessedItems(payload);
@@ -113,10 +117,15 @@ public class DynamoDBProducer {
 
                         if (result.getUnprocessedItems() == null || result.getUnprocessedItems().isEmpty()) {
                             //we decrement the list of the  items we consumed;
+                            log.debug("all entries in payload consumed");
+
                             currentNumberOfRequests -= payload.values().stream()
                                     .collect(Collectors.summingInt(l -> l.size()));
                             break;
                         } else {
+
+                            log.debug("UnprocessedItems left: {} ",result.getUnprocessedItems());
+
                             //we decrement the list of the  items we consumed;
                             Map<String, List<WriteRequest>> remainingPayload = result.getUnprocessedItems();
                             currentNumberOfRequests -= (
@@ -129,6 +138,9 @@ public class DynamoDBProducer {
                             Thread.sleep(delayMillis);
                             System.err.println("retrying");
                             delayMillis *= 2;
+
+                            log.debug("retrying with payload {}", payload);
+
                         }
 
                     }
@@ -144,6 +156,7 @@ public class DynamoDBProducer {
                 } catch (InterruptedException t) {
                     if (swallowInterruptedException)
                         continue;
+                    log.error("InterruptedException {}", t);
                     t.printStackTrace();
                 }
             }
