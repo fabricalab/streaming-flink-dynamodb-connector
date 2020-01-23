@@ -193,8 +193,7 @@ public class DynamoDBProducer {
                 if (seenKeys.contains(key)) {
                     //force flush
                     System.err.println("Force flush due to chunking, splitting at " + getCurrentlyUnderConstruction().size() + " out of " + MAX_ELEMENTS_PER_REQUEST);
-                    promoteUnderConstructionToQueue(); //silently changes state
-                    seenKeys.clear();
+                    promoteUnderConstructionToQueue(); //silently changes state (and cleans seenKeys)
                 }
                 seenKeys.add(key);
             } catch (Exception e) {
@@ -240,6 +239,9 @@ public class DynamoDBProducer {
         currentlyUnderConstruction = new HashMap<>();
         currentFuture = SettableFuture.create();
         currentSize = 0;
+
+        //always cleanup seen keys
+        seenKeys.clear();
     }
 
     public void flush() {
