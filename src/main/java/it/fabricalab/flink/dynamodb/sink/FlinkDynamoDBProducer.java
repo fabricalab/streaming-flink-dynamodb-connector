@@ -4,6 +4,7 @@ package it.fabricalab.flink.dynamodb.sink;
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDB;
 import com.amazonaws.services.dynamodbv2.model.BatchWriteItemRequest;
 import com.amazonaws.services.dynamodbv2.model.BatchWriteItemResult;
+import com.amazonaws.services.dynamodbv2.model.WriteRequest;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
@@ -15,28 +16,38 @@ import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.metrics.Counter;
 import org.apache.flink.metrics.MetricGroup;
-import org.apache.flink.runtime.state.FunctionInitializationContext;
-import org.apache.flink.runtime.state.FunctionSnapshotContext;
-import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
+import org.apache.flink.streaming.api.checkpoint.ListCheckpointed;
 import org.apache.flink.streaming.api.functions.sink.RichSinkFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.Properties;
-import java.util.concurrent.*;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.apache.flink.util.Preconditions.checkArgument;
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
 /**
- * The FlinkKinesisProducer allows to produce from a Flink DataStream into Kinesis.
+ * The FlinkDynamodbProducer allows to produce from a Flink DataStream into Kinesis.
  */
 @PublicEvolving
-public class FlinkDynamoDBProducer extends RichSinkFunction<AugmentedWriteRequest> implements CheckpointedFunction {
+public class FlinkDynamoDBProducer extends RichSinkFunction<AugmentedWriteRequest> implements ListCheckpointed<AugmentedWriteRequest> {
 
     public static final String DYNAMODB_PRODUCER_TIMEOUT_PROPERTY = "flush-timeout";
 
     public static final String DYNAMODB_PRODUCER_METRIC_GROUP = "dynamodbProducer";
+
+    public static final String DYNAMODB_PRODUCER_CHECKPOINTINGMODE_PROPERTY = "checkpointingMode";
+
 
     public static final String METRIC_BACKPRESSURE_CYCLES = "backpressureCycles";
 
@@ -51,6 +62,7 @@ public class FlinkDynamoDBProducer extends RichSinkFunction<AugmentedWriteReques
      */
     private final Properties configProps;
     private final int flushTimeout;
+    private final CheckpointingMode checkpointingMode;
 
     /* Flag controlling the error behavior of the producer */
     private boolean failOnError = false;
@@ -107,6 +119,22 @@ public class FlinkDynamoDBProducer extends RichSinkFunction<AugmentedWriteReques
         this.flushTimeout = Integer.parseInt(configProps.getProperty(DYNAMODB_PRODUCER_TIMEOUT_PROPERTY, "-1"));
 
 
+        //per default flushBefore
+        CheckpointingMode checkpointingMode = CheckpointingMode.FlushBefore;
+        String s = configProps.getProperty(DYNAMODB_PRODUCER_CHECKPOINTINGMODE_PROPERTY);
+
+        if (s != null)
+            if (s.equals(CheckpointingMode.ListState.name()))
+                checkpointingMode = CheckpointingMode.ListState;
+
+        this.checkpointingMode = checkpointingMode;
+        LOG.info("Flink DynamoDB producer checkpointingMode {}, flushTimeout {}", this.checkpointingMode, this.flushTimeout);
+
+    }
+
+    public enum CheckpointingMode {
+        FlushBefore, //the producer relays checkpoints and flushes. no state needed
+        ListState, //the produces persists flight requests in list state
     }
 
     /**
@@ -130,6 +158,7 @@ public class FlinkDynamoDBProducer extends RichSinkFunction<AugmentedWriteReques
         checkArgument(queueLimit > 0, "queueLimit must be a positive number");
         this.queueLimit = queueLimit;
     }
+
 
     //what we actually need from DynamoDB client
     public interface Client {
@@ -185,14 +214,25 @@ public class FlinkDynamoDBProducer extends RichSinkFunction<AugmentedWriteReques
         if (flushTimeout > 0) {
             scheduler = Executors.newScheduledThreadPool(1);
             Runnable timerRunnable = () -> {
-            	LOG.debug("Flushing DynamoDBProducer queue, timeout: {}", flushTimeout );
-				producer.flush();
-			};
-            scheduler.scheduleAtFixedRate( timerRunnable , flushTimeout, flushTimeout, TimeUnit.MILLISECONDS);
+                LOG.debug("Flushing DynamoDBProducer queue, timeout: {}", flushTimeout);
+                producer.flush();
+            };
+            scheduler.scheduleAtFixedRate(timerRunnable, flushTimeout, flushTimeout, TimeUnit.MILLISECONDS);
         }
 
-        LOG.info("Started DYNAMODB producer instance for region '{}'",configProps.get("aws.region"));
-}
+        LOG.info("Started DYNAMODB producer instance for region '{}'", configProps.get("aws.region"));
+
+        if (initialQueue != null) {
+
+            LOG.info("restoring {} elements from checkpointed state", initialQueue.size());
+
+            //TODO that's damn identical to 'invoke' last part
+            for (AugmentedWriteRequest value : initialQueue) {
+                ListenableFuture<WriteItemResult> cb = producer.addUserRecord(value);
+                Futures.addCallback(cb, callback, ForkJoinPool.commonPool());
+            }
+        }
+    }
 
 
     @Override
@@ -235,14 +275,32 @@ public class FlinkDynamoDBProducer extends RichSinkFunction<AugmentedWriteReques
         checkAndPropagateAsyncError();
     }
 
-    @Override
-    public void initializeState(FunctionInitializationContext context) throws Exception {
-        // nothing to do
-        //TODO noi ce lo avremo !!
-    }
 
     @Override
-    public void snapshotState(FunctionSnapshotContext context) throws Exception {
+    public List<AugmentedWriteRequest> snapshotState(long checkpointId, long timestamp) throws Exception {
+
+
+        if(checkpointingMode == CheckpointingMode.ListState) {
+
+            // check for asynchronous errors and fail the checkpoint if necessary
+            checkAndPropagateAsyncError();
+
+
+            //rebuild AugmentedRequests from underConstruction map
+            Stream<AugmentedWriteRequest> underConstruction =
+                    producer.getCurrentlyUnderConstruction().entrySet().stream()
+                            .flatMap(e -> e.getValue().stream().map( v -> new AugmentedWriteRequest(e.getKey(), v)));
+
+            //queue is essentially a set of underConstruction maps
+            Stream<AugmentedWriteRequest> inQueue = producer.getQueue().stream().map(q -> q.getPayload().entrySet().stream() )
+                    .flatMap(Function.identity()) //flatten
+                    .flatMap(e -> e.getValue().stream().map( v -> new AugmentedWriteRequest(e.getKey(), v)));
+
+
+            return Stream.concat(inQueue, underConstruction).collect(Collectors.toList());
+
+        }
+
         // check for asynchronous errors and fail the checkpoint if necessary
         checkAndPropagateAsyncError();
 
@@ -254,7 +312,25 @@ public class FlinkDynamoDBProducer extends RichSinkFunction<AugmentedWriteReques
 
         // if the flushed requests has errors, we should propagate it also and fail the checkpoint
         checkAndPropagateAsyncError();
+
+        return Collections.emptyList();
+
     }
+
+
+    /*** from ListSchecpointed documentaion */
+    /**
+     * <p><b>Important:</b> When implementing this interface together with {RichFunction},
+     * then the {@code restoreState()} method is called before {RichFunction#open(Configuration)}.
+     */
+    private List<AugmentedWriteRequest> initialQueue = null;
+
+    @Override
+    public void restoreState(List<AugmentedWriteRequest> state) throws Exception {
+        initialQueue = new ArrayList<>(state); //should we make a deep copy ?
+        //we will inject the initial elements just after initialization in 'open'
+    }
+
 
     // --------------------------- Utilities ---------------------------
 

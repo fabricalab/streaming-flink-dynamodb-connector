@@ -20,6 +20,8 @@ import lombok.ToString;
 import lombok.experimental.Accessors;
 import org.apache.flink.api.common.restartstrategy.RestartStrategies;
 import org.apache.flink.api.java.functions.KeySelector;
+import org.apache.flink.contrib.streaming.state.RocksDBStateBackend;
+import org.apache.flink.runtime.state.StateBackend;
 import org.apache.flink.streaming.api.datastream.DataStreamSource;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.joda.time.DateTime;
@@ -33,7 +35,7 @@ import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-public class FlinkDynamoDBProducerTest {
+public class FlinkDynamoDBProducerCheckpointedTest {
 
     @ClassRule
     public static DynaliteContainer dynamoDB = new DynaliteContainer();
@@ -78,6 +80,8 @@ public class FlinkDynamoDBProducerTest {
         final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setParallelism(1);
 
+        env.setStateBackend( (StateBackend) new RocksDBStateBackend("/tmp/flinkTestStateRocksdb"));
+
         List<AugmentedWriteRequest> list = new ArrayList<>();
         for (int i = 0; i < 30; i++) {
             list.add(
@@ -86,8 +90,12 @@ public class FlinkDynamoDBProducerTest {
 
         DataStreamSource<AugmentedWriteRequest> streamIn = env.fromCollection(list);
 
+        Properties properties = new Properties();
+        properties.setProperty(FlinkDynamoDBProducer.DYNAMODB_PRODUCER_CHECKPOINTINGMODE_PROPERTY,
+                FlinkDynamoDBProducer.CheckpointingMode.ListState.name());
+
         streamIn.addSink(
-                new FlinkDynamoDBProducer(new Properties()) {
+                    new FlinkDynamoDBProducer(properties) {
                     @Override
                     protected Client getClient(Properties producerProps) {
                         /***
@@ -151,6 +159,8 @@ public class FlinkDynamoDBProducerTest {
         //creiamo una rete con solo il nostro sink
         final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setParallelism(1);
+        env.setStateBackend( (StateBackend) new RocksDBStateBackend("/tmp/flinkTestStateRocksdb"));
+
 
         List<AugmentedWriteRequest> list = new ArrayList<>();
         for (int i = 0; i < 3000; i++) {
@@ -162,6 +172,9 @@ public class FlinkDynamoDBProducerTest {
 
         //never use 10 milliseconds in a real job, just to stress the timer machinery.
         Properties properties = new Properties();
+        properties.setProperty(FlinkDynamoDBProducer.DYNAMODB_PRODUCER_CHECKPOINTINGMODE_PROPERTY,
+                FlinkDynamoDBProducer.CheckpointingMode.ListState.name());
+
         properties.setProperty(FlinkDynamoDBProducer.DYNAMODB_PRODUCER_TIMEOUT_PROPERTY, "10");
 
         streamIn.addSink(
@@ -228,6 +241,8 @@ public class FlinkDynamoDBProducerTest {
         //creiamo una rete con solo il nostor sink
         final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setParallelism(1);
+        env.setStateBackend( (StateBackend) new RocksDBStateBackend("/tmp/flinkTestStateRocksdb"));
+
 
         List<AugmentedWriteRequest> list = new ArrayList<>();
         for (int i = 0; i < 30; i++) {
@@ -237,8 +252,12 @@ public class FlinkDynamoDBProducerTest {
 
         DataStreamSource<AugmentedWriteRequest> streamIn = env.fromCollection(list);
 
+        Properties properties = new Properties();
+        properties.setProperty(FlinkDynamoDBProducer.DYNAMODB_PRODUCER_CHECKPOINTINGMODE_PROPERTY,
+                FlinkDynamoDBProducer.CheckpointingMode.ListState.name());
+
         streamIn.addSink(
-                new FlinkDynamoDBProducer(new Properties(), (v) -> "CONFLICTING_KEY") {
+                new FlinkDynamoDBProducer(properties, (v) -> "CONFLICTING_KEY") {
                     @Override
                     protected Client getClient(Properties producerProps) {
                         /***
@@ -385,7 +404,11 @@ public class FlinkDynamoDBProducerTest {
 
             DataStreamSource<AugmentedWriteRequest> streamIn = env.fromCollection(list);
 
-            FlinkDynamoDBProducer mySink = new FlinkDynamoDBProducer(new Properties()) {
+            Properties properties = new Properties();
+            properties.setProperty(FlinkDynamoDBProducer.DYNAMODB_PRODUCER_CHECKPOINTINGMODE_PROPERTY,
+                    FlinkDynamoDBProducer.CheckpointingMode.ListState.name());
+
+            FlinkDynamoDBProducer mySink = new FlinkDynamoDBProducer(properties) {
                 @Override
                 protected Client getClient(Properties producerProps) {
                     /***
