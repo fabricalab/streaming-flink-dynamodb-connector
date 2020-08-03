@@ -3,22 +3,16 @@ package it.fabricalab;
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDB;
 import com.amazonaws.services.dynamodbv2.model.*;
 import com.amazonaws.services.dynamodbv2.util.TableUtils;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 
-import java.io.File;
-import java.io.IOException;
-import java.net.URL;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
-import java.util.stream.StreamSupport;
 
 public class TestUtils {
     public static void createTable(AmazonDynamoDB dynamoDBClient, String tableName, long readCapacityUnits, long writeCapacityUnits,
-                                    String partitionKeyName, String partitionKeyType, String sortKeyName, String sortKeyType) {
+                                   String partitionKeyName, String partitionKeyType, String sortKeyName, String sortKeyType) {
 
         try {
 

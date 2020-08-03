@@ -54,7 +54,7 @@ public class FlinkDynamoDBProducerCheckpointedTest {
     }
 
     public static AugmentedWriteRequest createAugmentedWriteRequest(String table, String key, String another) {
-        return createAugmentedWriteRequest(table,key,another,"KeyName");
+        return createAugmentedWriteRequest(table, key, another, "KeyName");
     }
 
     @Test
@@ -80,7 +80,7 @@ public class FlinkDynamoDBProducerCheckpointedTest {
         final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setParallelism(1);
 
-        env.setStateBackend( (StateBackend) new RocksDBStateBackend("/tmp/flinkTestStateRocksdb"));
+        env.setStateBackend((StateBackend) new RocksDBStateBackend("/tmp/flinkTestStateRocksdb"));
 
         List<AugmentedWriteRequest> list = new ArrayList<>();
         for (int i = 0; i < 30; i++) {
@@ -95,7 +95,7 @@ public class FlinkDynamoDBProducerCheckpointedTest {
                 FlinkDynamoDBProducer.CheckpointingMode.ListState.name());
 
         streamIn.addSink(
-                    new FlinkDynamoDBProducer(properties) {
+                new FlinkDynamoDBProducer(properties) {
                     @Override
                     protected Client getClient(Properties producerProps) {
                         /***
@@ -159,7 +159,7 @@ public class FlinkDynamoDBProducerCheckpointedTest {
         //creiamo una rete con solo il nostro sink
         final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setParallelism(1);
-        env.setStateBackend( (StateBackend) new RocksDBStateBackend("/tmp/flinkTestStateRocksdb"));
+        env.setStateBackend((StateBackend) new RocksDBStateBackend("/tmp/flinkTestStateRocksdb"));
 
 
         List<AugmentedWriteRequest> list = new ArrayList<>();
@@ -241,7 +241,7 @@ public class FlinkDynamoDBProducerCheckpointedTest {
         //creiamo una rete con solo il nostor sink
         final StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setParallelism(1);
-        env.setStateBackend( (StateBackend) new RocksDBStateBackend("/tmp/flinkTestStateRocksdb"));
+        env.setStateBackend((StateBackend) new RocksDBStateBackend("/tmp/flinkTestStateRocksdb"));
 
 
         List<AugmentedWriteRequest> list = new ArrayList<>();
@@ -298,93 +298,6 @@ public class FlinkDynamoDBProducerCheckpointedTest {
         System.err.println(items);
     }
 
-
-    public enum EntryType {
-        ERROR,
-        OFFLINE
-    }
-
-
-    @ToString
-    @NoArgsConstructor
-    @Getter
-    @Accessors(chain = true)
-    @DynamoDBTable(tableName = "_gvr-bic-devices-status-now")
-    public static class NowDeviceEntry {
-
-        @DynamoDBHashKey
-        @Setter
-        private String siteId;
-        @Setter
-        private String localKey;
-        @Setter
-        private String code;
-        @Setter
-        private String device;
-        @DynamoDBTyped(DynamoDBMapperFieldModel.DynamoDBAttributeType.S)
-        private DateTime in;
-        @Setter
-        private String parent;
-        @Setter
-        private boolean propagableToParent;
-        @Setter
-        private boolean propagableToSite;
-
-        String getEntryOwner() { return isComponent() ? this.parent : this.device; }
-
-        boolean isAnErrorEntry() { return !EntryType.OFFLINE.name().equals(this.code); }
-
-        EntryType getType() {
-            return isAnErrorEntry() ? EntryType.ERROR : EntryType.OFFLINE;
-        }
-
-        public void setIn(DateTime in) {
-            this.in = in.withZone(DateTimeZone.UTC);
-        }
-
-        boolean isComponent() { return !StringUtils.isNullOrEmpty(this.parent); }
-
-        public enum Properties {
-            siteId,
-            localKey,
-            code,
-            device,
-            in,
-            eventTime
-        }
-
-    }
-
-    public static class AugmentedWriteRequestSelector implements KeySelector<AugmentedWriteRequest, String> {
-
-        @Override
-        public String getKey(AugmentedWriteRequest request) {
-
-            final PutRequest putRequest = request.getRequest().getPutRequest();
-            if (null != putRequest) {
-                String putKey = putRequest.getItem()
-                        .entrySet()
-                        .stream()
-                        .filter(entry -> Arrays.asList(NowDeviceEntry.Properties.siteId.name(), NowDeviceEntry.Properties.localKey.name()).contains(entry.getKey()))
-                        .map(entry -> entry.getValue().getS())
-                        .collect(Collectors.joining("_"));
-
-                System.err.println("putKey: " + putKey);
-                return putKey;
-            }
-            String delKey =  request.getRequest()
-                    .getDeleteRequest()
-                    .getKey()
-                    .values().stream()
-                    .map(AttributeValue::getS)
-                    .collect(Collectors.joining("_"));
-                    System.err.println("delKey: " + delKey);
-            return delKey;
-
-        }
-    }
-
-
     @Test
     public void testFail() throws Exception {
 
@@ -440,6 +353,97 @@ public class FlinkDynamoDBProducerCheckpointedTest {
         }
 
 
+    }
+
+
+    public enum EntryType {
+        ERROR,
+        OFFLINE
+    }
+
+    @ToString
+    @NoArgsConstructor
+    @Getter
+    @Accessors(chain = true)
+    @DynamoDBTable(tableName = "_gvr-bic-devices-status-now")
+    public static class NowDeviceEntry {
+
+        @DynamoDBHashKey
+        @Setter
+        private String siteId;
+        @Setter
+        private String localKey;
+        @Setter
+        private String code;
+        @Setter
+        private String device;
+        @DynamoDBTyped(DynamoDBMapperFieldModel.DynamoDBAttributeType.S)
+        private DateTime in;
+        @Setter
+        private String parent;
+        @Setter
+        private boolean propagableToParent;
+        @Setter
+        private boolean propagableToSite;
+
+        String getEntryOwner() {
+            return isComponent() ? this.parent : this.device;
+        }
+
+        boolean isAnErrorEntry() {
+            return !EntryType.OFFLINE.name().equals(this.code);
+        }
+
+        EntryType getType() {
+            return isAnErrorEntry() ? EntryType.ERROR : EntryType.OFFLINE;
+        }
+
+        public void setIn(DateTime in) {
+            this.in = in.withZone(DateTimeZone.UTC);
+        }
+
+        boolean isComponent() {
+            return !StringUtils.isNullOrEmpty(this.parent);
+        }
+
+        public enum Properties {
+            siteId,
+            localKey,
+            code,
+            device,
+            in,
+            eventTime
+        }
+
+    }
+
+    public static class AugmentedWriteRequestSelector implements KeySelector<AugmentedWriteRequest, String> {
+
+        @Override
+        public String getKey(AugmentedWriteRequest request) {
+
+            final PutRequest putRequest = request.getRequest().getPutRequest();
+            if (null != putRequest) {
+                String putKey = putRequest.getItem()
+                        .entrySet()
+                        .stream()
+                        .filter(entry -> Arrays.asList(NowDeviceEntry.Properties.siteId.name(), NowDeviceEntry.Properties.localKey.name()).contains(entry.getKey()))
+                        .map(entry -> entry.getValue().getS())
+                        .collect(Collectors.joining("_"));
+
+                System.err.println("putKey: " + putKey);
+                return putKey;
+            }
+            String delKey = request.getRequest()
+                    .getDeleteRequest()
+                    .getKey()
+                    .values().stream()
+                    .map(AttributeValue::getS)
+                    .collect(Collectors.joining("_"));
+            System.err.println("delKey: " + delKey);
+            return delKey;
+
+        }
     }
 
 

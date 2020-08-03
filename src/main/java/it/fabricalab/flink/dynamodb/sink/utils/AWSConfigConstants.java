@@ -24,9 +24,8 @@ package it.fabricalab.flink.dynamodb.sink.utils;
  */
 
 
-import org.apache.flink.annotation.PublicEvolving;
-
 import com.amazonaws.auth.AWSCredentialsProvider;
+import org.apache.flink.annotation.PublicEvolving;
 
 /**
  * Configuration keys for AWS service usage.
@@ -34,97 +33,119 @@ import com.amazonaws.auth.AWSCredentialsProvider;
 @PublicEvolving
 public class AWSConfigConstants {
 
-	/**
-	 * Possible configuration values for the type of credential provider to use when accessing AWS Kinesis.
-	 * Internally, a corresponding implementation of {@link AWSCredentialsProvider} will be used.
-	 */
-	public enum CredentialProvider {
+    /**
+     * The AWS region of the Kinesis streams to be pulled ("us-east-1" is used if not set).
+     */
+    public static final String AWS_REGION = "aws.region";
+    /**
+     * The credential provider type to use when AWS credentials are required (BASIC is used if not set).
+     */
+    public static final String AWS_CREDENTIALS_PROVIDER = "aws.credentials.provider";
+    /**
+     * The AWS access key ID to use when setting credentials provider type to BASIC.
+     */
+    public static final String AWS_ACCESS_KEY_ID = accessKeyId(AWS_CREDENTIALS_PROVIDER);
+    /**
+     * The AWS secret key to use when setting credentials provider type to BASIC.
+     */
+    public static final String AWS_SECRET_ACCESS_KEY = secretKey(AWS_CREDENTIALS_PROVIDER);
+    /**
+     * Optional configuration for profile path if credential provider type is set to be PROFILE.
+     */
+    public static final String AWS_PROFILE_PATH = profilePath(AWS_CREDENTIALS_PROVIDER);
+    /**
+     * Optional configuration for profile name if credential provider type is set to be PROFILE.
+     */
+    public static final String AWS_PROFILE_NAME = profileName(AWS_CREDENTIALS_PROVIDER);
+    /**
+     * The role ARN to use when credential provider type is set to ASSUME_ROLE.
+     */
+    public static final String AWS_ROLE_ARN = roleArn(AWS_CREDENTIALS_PROVIDER);
+    /**
+     * The role session name to use when credential provider type is set to ASSUME_ROLE.
+     */
+    public static final String AWS_ROLE_SESSION_NAME = roleSessionName(AWS_CREDENTIALS_PROVIDER);
+    /**
+     * The external ID to use when credential provider type is set to ASSUME_ROLE.
+     */
+    public static final String AWS_ROLE_EXTERNAL_ID = externalId(AWS_CREDENTIALS_PROVIDER);
+    /**
+     * The credentials provider that provides credentials for assuming the role when credential
+     * provider type is set to ASSUME_ROLE.
+     * Roles can be nested, so AWS_ROLE_CREDENTIALS_PROVIDER can again be set to "ASSUME_ROLE"
+     */
+    public static final String AWS_ROLE_CREDENTIALS_PROVIDER = roleCredentialsProvider(AWS_CREDENTIALS_PROVIDER);
+    /**
+     * The AWS endpoint for Kinesis (derived from the AWS region setting if not set).
+     */
+    public static final String AWS_ENDPOINT = "aws.endpoint";
 
-		/** Look for the environment variables AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY to create AWS credentials. */
-		ENV_VAR,
+    public static String accessKeyId(String prefix) {
+        return prefix + ".basic.accesskeyid";
+    }
 
-		/** Look for Java system properties aws.accessKeyId and aws.secretKey to create AWS credentials. */
-		SYS_PROP,
+    public static String secretKey(String prefix) {
+        return prefix + ".basic.secretkey";
+    }
 
-		/** Use a AWS credentials profile file to create the AWS credentials. */
-		PROFILE,
+    public static String profilePath(String prefix) {
+        return prefix + ".profile.path";
+    }
 
-		/** Simply create AWS credentials by supplying the AWS access key ID and AWS secret key in the configuration properties. */
-		BASIC,
+    public static String profileName(String prefix) {
+        return prefix + ".profile.name";
+    }
 
-		/** Create AWS credentials by assuming a role. The credentials for assuming the role must be supplied. **/
-		ASSUME_ROLE,
+    public static String roleArn(String prefix) {
+        return prefix + ".role.arn";
+    }
 
-		/** A credentials provider chain will be used that searches for credentials in this order: ENV_VARS, SYS_PROPS, PROFILE in the AWS instance metadata. **/
-		AUTO,
-	}
+    public static String roleSessionName(String prefix) {
+        return prefix + ".role.sessionName";
+    }
 
-	/** The AWS region of the Kinesis streams to be pulled ("us-east-1" is used if not set). */
-	public static final String AWS_REGION = "aws.region";
+    public static String externalId(String prefix) {
+        return prefix + ".role.externalId";
+    }
 
-	/** The credential provider type to use when AWS credentials are required (BASIC is used if not set). */
-	public static final String AWS_CREDENTIALS_PROVIDER = "aws.credentials.provider";
+    public static String roleCredentialsProvider(String prefix) {
+        return prefix + ".role.provider";
+    }
 
-	/** The AWS access key ID to use when setting credentials provider type to BASIC. */
-	public static final String AWS_ACCESS_KEY_ID = accessKeyId(AWS_CREDENTIALS_PROVIDER);
+    /**
+     * Possible configuration values for the type of credential provider to use when accessing AWS Kinesis.
+     * Internally, a corresponding implementation of {@link AWSCredentialsProvider} will be used.
+     */
+    public enum CredentialProvider {
 
-	/** The AWS secret key to use when setting credentials provider type to BASIC. */
-	public static final String AWS_SECRET_ACCESS_KEY = secretKey(AWS_CREDENTIALS_PROVIDER);
+        /**
+         * Look for the environment variables AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY to create AWS credentials.
+         */
+        ENV_VAR,
 
-	/** Optional configuration for profile path if credential provider type is set to be PROFILE. */
-	public static final String AWS_PROFILE_PATH = profilePath(AWS_CREDENTIALS_PROVIDER);
+        /**
+         * Look for Java system properties aws.accessKeyId and aws.secretKey to create AWS credentials.
+         */
+        SYS_PROP,
 
-	/** Optional configuration for profile name if credential provider type is set to be PROFILE. */
-	public static final String AWS_PROFILE_NAME = profileName(AWS_CREDENTIALS_PROVIDER);
+        /**
+         * Use a AWS credentials profile file to create the AWS credentials.
+         */
+        PROFILE,
 
-	/** The role ARN to use when credential provider type is set to ASSUME_ROLE. */
-	public static final String AWS_ROLE_ARN = roleArn(AWS_CREDENTIALS_PROVIDER);
+        /**
+         * Simply create AWS credentials by supplying the AWS access key ID and AWS secret key in the configuration properties.
+         */
+        BASIC,
 
-	/** The role session name to use when credential provider type is set to ASSUME_ROLE. */
-	public static final String AWS_ROLE_SESSION_NAME = roleSessionName(AWS_CREDENTIALS_PROVIDER);
+        /**
+         * Create AWS credentials by assuming a role. The credentials for assuming the role must be supplied.
+         **/
+        ASSUME_ROLE,
 
-	/** The external ID to use when credential provider type is set to ASSUME_ROLE. */
-	public static final String AWS_ROLE_EXTERNAL_ID = externalId(AWS_CREDENTIALS_PROVIDER);
-
-	/**
-	 * The credentials provider that provides credentials for assuming the role when credential
-	 * provider type is set to ASSUME_ROLE.
-	 * Roles can be nested, so AWS_ROLE_CREDENTIALS_PROVIDER can again be set to "ASSUME_ROLE"
-	 */
-	public static final String AWS_ROLE_CREDENTIALS_PROVIDER = roleCredentialsProvider(AWS_CREDENTIALS_PROVIDER);
-
-	/** The AWS endpoint for Kinesis (derived from the AWS region setting if not set). */
-	public static final String AWS_ENDPOINT = "aws.endpoint";
-
-	public static String accessKeyId(String prefix) {
-		return prefix + ".basic.accesskeyid";
-	}
-
-	public static String secretKey(String prefix) {
-		return prefix + ".basic.secretkey";
-	}
-
-	public static String profilePath(String prefix) {
-		return prefix + ".profile.path";
-	}
-
-	public static String profileName(String prefix) {
-		return prefix + ".profile.name";
-	}
-
-	public static String roleArn(String prefix) {
-		return prefix + ".role.arn";
-	}
-
-	public static String roleSessionName(String prefix) {
-		return prefix + ".role.sessionName";
-	}
-
-	public static String externalId(String prefix) {
-		return prefix + ".role.externalId";
-	}
-
-	public static String roleCredentialsProvider(String prefix) {
-		return prefix + ".role.provider";
-	}
+        /**
+         * A credentials provider chain will be used that searches for credentials in this order: ENV_VARS, SYS_PROPS, PROFILE in the AWS instance metadata.
+         **/
+        AUTO,
+    }
 }

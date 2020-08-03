@@ -5,14 +5,12 @@ import com.amazonaws.services.dynamodbv2.model.BatchWriteItemResult;
 import com.amazonaws.services.dynamodbv2.model.ProvisionedThroughputExceededException;
 import com.amazonaws.services.dynamodbv2.model.WriteRequest;
 import com.google.common.util.concurrent.ListenableFuture;
-import it.fabricalab.flink.dynamodb.sink.FlinkDynamoDBProducer;
 import it.fabricalab.flink.dynamodb.sink.AugmentedWriteRequest;
 import it.fabricalab.flink.dynamodb.sink.DynamoDBProducer;
+import it.fabricalab.flink.dynamodb.sink.FlinkDynamoDBProducer;
 import it.fabricalab.flink.dynamodb.sink.WriteItemResult;
 import org.junit.jupiter.api.Test;
 
-import javax.xml.crypto.*;
-import javax.xml.crypto.dsig.keyinfo.KeyInfo;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -44,11 +42,12 @@ class DynamoDBProducerTest {
             clientThrowingProvisionedThroughputExceededException = new FlinkDynamoDBProducer.Client() {
 
         int ammunition = 4;
+
         @Override
         public BatchWriteItemResult batchWriteItem(BatchWriteItemRequest batchWriteItemRequestx) {
             try {
                 Thread.sleep(100);
-                if(ammunition > 0) {
+                if (ammunition > 0) {
                     ammunition--;
                     throw new ProvisionedThroughputExceededException("this is failure nr " + ammunition);
 
@@ -64,22 +63,6 @@ class DynamoDBProducerTest {
         System.err.println("CALLBACK: " + t);
         t.printStackTrace();
     };
-
-    private Runnable neverendingSpiller = new Runnable() {
-        @Override
-        public void run() {
-            while (true) {
-                System.err.println("Test spiller cycle...");
-                try {
-                    Thread.sleep(1000);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-            }
-
-        }
-    };
-
     //throws Runtime Exception
     //to test failure
     private static final FlinkDynamoDBProducer.Client
@@ -95,14 +78,26 @@ class DynamoDBProducerTest {
             return new BatchWriteItemResult();
         }
     };
+    private Runnable neverendingSpiller = new Runnable() {
+        @Override
+        public void run() {
+            while (true) {
+                System.err.println("Test spiller cycle...");
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
 
-
+        }
+    };
 
     @Test
     void testWithoutSpiller() {
 
         DynamoDBProducer producer =
-                new DynamoDBProducer(new Properties(), neverendingSpiller , dummyCallback);
+                new DynamoDBProducer(new Properties(), neverendingSpiller, dummyCallback);
 
         assertEquals(0, producer.getOutstandingRecordsCount());
 
@@ -281,7 +276,7 @@ class DynamoDBProducerTest {
     @Test
     void testFlushEmpty() {
         DynamoDBProducer producer =
-                new DynamoDBProducer(new Properties(),neverendingSpiller, dummyCallback);
+                new DynamoDBProducer(new Properties(), neverendingSpiller, dummyCallback);
 
         assertEquals(0, producer.getCurrentlyUnderConstruction().size());
         producer.flush();
@@ -316,7 +311,7 @@ class DynamoDBProducerTest {
                         System.err.println("Incoming payload size: " + tbd.values().stream().collect(Collectors.summingInt(l -> l.size())));
                         System.err.println("consumed size: " + consumed.size());
 
-                        for(int j = 0 ; j<5; j++ ) { //TODO deve essere un divisore del batch-size che essendo 25...
+                        for (int j = 0; j < 5; j++) { //TODO deve essere un divisore del batch-size che essendo 25...
                             Set<String> keys = tbd.keySet();
                             if (keys.isEmpty())
                                 throw new RuntimeException("Map should never be empty");
@@ -353,7 +348,6 @@ class DynamoDBProducerTest {
 
 
     }
-
 
 
     @Test
@@ -401,11 +395,6 @@ class DynamoDBProducerTest {
             assertTrue(futures.get(i).isDone());
     }
 
-    public class ExceptionHolder {
-        public Throwable exception;
-    }
-
-
     //the callback brings Euntime exception thrown by the client to the callback
     @Test
     void testFatalThrowingClient() throws InterruptedException, ExecutionException, TimeoutException {
@@ -431,16 +420,18 @@ class DynamoDBProducerTest {
             f = producer.addUserRecord(new AugmentedWriteRequest("YY", new WriteRequest()));
 
             f.get(3L, TimeUnit.SECONDS);
-        } catch(TimeoutException toe) {
+        } catch (TimeoutException toe) {
             //swallowing
         }
 
-        assertTrue( gotException.exception instanceof RuntimeException );
+        assertTrue(gotException.exception instanceof RuntimeException);
 
 
     }
 
-
+    public class ExceptionHolder {
+        public Throwable exception;
+    }
 
 
 }

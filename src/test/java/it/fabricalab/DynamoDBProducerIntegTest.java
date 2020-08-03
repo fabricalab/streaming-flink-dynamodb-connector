@@ -6,8 +6,6 @@ import com.google.common.util.concurrent.ListenableFuture;
 import it.fabricalab.flink.dynamodb.sink.AugmentedWriteRequest;
 import it.fabricalab.flink.dynamodb.sink.DynamoDBProducer;
 import it.fabricalab.flink.dynamodb.sink.WriteItemResult;
-import org.apache.flink.api.java.functions.KeySelector;
-import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.dynamodb.DynaliteContainer;
@@ -23,16 +21,12 @@ import static org.junit.jupiter.api.Assertions.*;
 class DynamoDBProducerIntegTest {
 
 
-    @Rule
-    public  DynaliteContainer dynamoDB = new DynaliteContainer();
-
-
-
     private static final Consumer<Throwable> dummyCallback = (t) -> {
         System.err.println("CALLBACK: " + t);
         t.printStackTrace();
     };
-
+    @Rule
+    public DynaliteContainer dynamoDB = new DynaliteContainer();
 
     @Test
     void testWitSpiller() throws InterruptedException, ExecutionException, TimeoutException {
@@ -125,7 +119,9 @@ class DynamoDBProducerIntegTest {
         DynamoDBProducer producer =
                 new DynamoDBProducer(new Properties(),
                         (r) -> {
-                            System.err.println(r);return client.batchWriteItem(r);},
+                            System.err.println(r);
+                            return client.batchWriteItem(r);
+                        },
                         //this key selector causes each chun to contain only one element
                         (v) -> "SAME_CONSTANT_KEY",
                         dummyCallback);

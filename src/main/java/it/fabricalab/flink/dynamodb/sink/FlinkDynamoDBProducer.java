@@ -1,10 +1,8 @@
-
 package it.fabricalab.flink.dynamodb.sink;
 
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDB;
 import com.amazonaws.services.dynamodbv2.model.BatchWriteItemRequest;
 import com.amazonaws.services.dynamodbv2.model.BatchWriteItemResult;
-import com.amazonaws.services.dynamodbv2.model.WriteRequest;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
@@ -93,7 +91,11 @@ public class FlinkDynamoDBProducer extends RichSinkFunction<AugmentedWriteReques
 
     private KeySelector<AugmentedWriteRequest, String> keySelector = null;
     // --------------------------- Initialization and configuration  ---------------------------
-
+    /**
+     * <p><b>Important:</b> When implementing this interface together with {RichFunction},
+     * then the {@code restoreState()} method is called before {RichFunction#open(Configuration)}.
+     */
+    private List<AugmentedWriteRequest> initialQueue = null;
 
     /**
      * Create a new FlinkDynamodbProducer.
@@ -132,11 +134,6 @@ public class FlinkDynamoDBProducer extends RichSinkFunction<AugmentedWriteReques
 
     }
 
-    public enum CheckpointingMode {
-        FlushBefore, //the producer relays checkpoints and flushes. no state needed
-        ListState, //the produces persists flight requests in list state
-    }
-
     /**
      * If set to true, the producer will immediately fail with an exception on any error.
      * Otherwise, the errors are logged and the producer goes on.
@@ -158,13 +155,6 @@ public class FlinkDynamoDBProducer extends RichSinkFunction<AugmentedWriteReques
         checkArgument(queueLimit > 0, "queueLimit must be a positive number");
         this.queueLimit = queueLimit;
     }
-
-
-    //what we actually need from DynamoDB client
-    public interface Client {
-        BatchWriteItemResult batchWriteItem(BatchWriteItemRequest batchWriteItemRequestx);
-    }
-    // --------------------------- Lifecycle methods ---------------------------
 
     @Override
     public void open(Configuration parameters) throws Exception {
@@ -233,7 +223,7 @@ public class FlinkDynamoDBProducer extends RichSinkFunction<AugmentedWriteReques
             }
         }
     }
-
+    // --------------------------- Lifecycle methods ---------------------------
 
     @Override
     public void invoke(AugmentedWriteRequest value, Context context) throws Exception {
@@ -275,12 +265,11 @@ public class FlinkDynamoDBProducer extends RichSinkFunction<AugmentedWriteReques
         checkAndPropagateAsyncError();
     }
 
-
     @Override
     public List<AugmentedWriteRequest> snapshotState(long checkpointId, long timestamp) throws Exception {
 
 
-        if(checkpointingMode == CheckpointingMode.ListState) {
+        if (checkpointingMode == CheckpointingMode.ListState) {
 
             // check for asynchronous errors and fail the checkpoint if necessary
             checkAndPropagateAsyncError();
@@ -289,12 +278,12 @@ public class FlinkDynamoDBProducer extends RichSinkFunction<AugmentedWriteReques
             //rebuild AugmentedRequests from underConstruction map
             Stream<AugmentedWriteRequest> underConstruction =
                     producer.getCurrentlyUnderConstruction().entrySet().stream()
-                            .flatMap(e -> e.getValue().stream().map( v -> new AugmentedWriteRequest(e.getKey(), v)));
+                            .flatMap(e -> e.getValue().stream().map(v -> new AugmentedWriteRequest(e.getKey(), v)));
 
             //queue is essentially a set of underConstruction maps
-            Stream<AugmentedWriteRequest> inQueue = producer.getQueue().stream().map(q -> q.getPayload().entrySet().stream() )
+            Stream<AugmentedWriteRequest> inQueue = producer.getQueue().stream().map(q -> q.getPayload().entrySet().stream())
                     .flatMap(Function.identity()) //flatten
-                    .flatMap(e -> e.getValue().stream().map( v -> new AugmentedWriteRequest(e.getKey(), v)));
+                    .flatMap(e -> e.getValue().stream().map(v -> new AugmentedWriteRequest(e.getKey(), v)));
 
 
             return Stream.concat(inQueue, underConstruction).collect(Collectors.toList());
@@ -317,14 +306,6 @@ public class FlinkDynamoDBProducer extends RichSinkFunction<AugmentedWriteReques
 
     }
 
-
-    /*** from ListSchecpointed documentaion */
-    /**
-     * <p><b>Important:</b> When implementing this interface together with {RichFunction},
-     * then the {@code restoreState()} method is called before {RichFunction#open(Configuration)}.
-     */
-    private List<AugmentedWriteRequest> initialQueue = null;
-
     @Override
     public void restoreState(List<AugmentedWriteRequest> state) throws Exception {
         initialQueue = new ArrayList<>(state); //should we make a deep copy ?
@@ -332,7 +313,7 @@ public class FlinkDynamoDBProducer extends RichSinkFunction<AugmentedWriteReques
     }
 
 
-    // --------------------------- Utilities ---------------------------
+    /*** from ListSchecpointed documentaion */
 
     /**
      * Creates a {@link DynamoDBProducer}.
@@ -358,6 +339,8 @@ public class FlinkDynamoDBProducer extends RichSinkFunction<AugmentedWriteReques
         return (r) -> actualClient.batchWriteItem(r);
     }
 
+
+    // --------------------------- Utilities ---------------------------
 
     /**
      * Check if there are any asynchronous exceptions. If so, rethrow the exception.
@@ -422,5 +405,15 @@ public class FlinkDynamoDBProducer extends RichSinkFunction<AugmentedWriteReques
                 break;
             }
         }
+    }
+
+    public enum CheckpointingMode {
+        FlushBefore, //the producer relays checkpoints and flushes. no state needed
+        ListState, //the produces persists flight requests in list state
+    }
+
+    //what we actually need from DynamoDB client
+    public interface Client {
+        BatchWriteItemResult batchWriteItem(BatchWriteItemRequest batchWriteItemRequestx);
     }
 }
