@@ -130,12 +130,20 @@
             <!--            <scope>provided</scope>-->
         </dependency>
         <dependency>
+            <groupId>org.junit.vintage</groupId>
+            <artifactId>junit-vintage-engine</artifactId>
+            <version>5.6.2</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>com.amazonaws</groupId>
             <artifactId>aws-java-sdk-dynamodb</artifactId>
+            <version>${aws.sdk}</version>
         </dependency>
         <dependency>
             <groupId>com.amazonaws</groupId>
             <artifactId>aws-java-sdk-sts</artifactId>
+            <version>${aws.sdk}</version>
         </dependency>
 
         <dependency>
@@ -183,13 +191,14 @@
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>junit-jupiter</artifactId>
-            <version>1.12.3</version>
+            <version>1.14.3</version>
             <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>
             <artifactId>dynalite</artifactId>
-            <version>1.12.3</version>
+            <version>1.14.3</version>
+            <scope>test</scope>
         </dependency>
 
         <dependency>
@@ -219,6 +228,11 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>2.22.2</version>
+                <configuration>
+                    <includes>
+                        <include>**/*Test.*</include>
+                    </includes>
+                </configuration>
             </plugin>
             <plugin>
                 <groupId>org.jacoco</groupId>
